@@ -28,4 +28,14 @@ class Track {
       youtubeUrl: json['youtube_url'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'numero': number,
+    'titulo': title,
+    'album': album,
+    'duracion': duration,
+    'letras': lyrics,
+    'youtube_url': youtubeUrl,
+  };
 }

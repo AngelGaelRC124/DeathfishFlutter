@@ -21,14 +21,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _error;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -43,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final session = asGuest
           ? await widget.dataService.loginAsGuest()
           : await widget.dataService.login(
-              _emailController.text,
+              _identifierController.text,
               _passwordController.text,
             );
       if (mounted) widget.onAuthenticated(session);
@@ -101,18 +101,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
+                          controller: _identifierController,
+                          keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: 'CORREO ELECTRÓNICO',
+                            labelText: 'CORREO ELECTRÓNICO / USUARIO',
                           ),
                           validator: (value) {
-                            final email = value?.trim() ?? '';
-                            return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                                    .hasMatch(email)
+                            final identifier = value?.trim() ?? '';
+                            return identifier.toLowerCase() == 'adminfish' ||
+                                    RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                        .hasMatch(identifier)
                                 ? null
-                                : 'Ingresa un correo válido.';
+                                : 'Ingresa un correo o usuario válido.';
                           },
                         ),
                         const SizedBox(height: 14),

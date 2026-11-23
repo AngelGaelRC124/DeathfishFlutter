@@ -23,6 +23,7 @@ void main() {
 
     expect(find.text('ACCESO INVITADO // LA PECERA RECORDS'), findsOneWidget);
     expect(find.text('> COMUNICADOS RECIENTES'), findsOneWidget);
+    expect(find.byTooltip('Panel de administrador'), findsNothing);
 
     await tester.tap(find.text('MERCH'));
     await tester.pumpAndSettle();
@@ -53,5 +54,38 @@ void main() {
     await tester.tap(find.text('CONTACTO'));
     await tester.pumpAndSettle();
     expect(find.text('NOMBRE / ORGANIZACIÓN'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Cerrar sesión'));
+    await tester.pumpAndSettle();
+    expect(find.text('INICIAR SESIÓN'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField).at(0), 'adminfish');
+    await tester.enterText(find.byType(TextFormField).at(1), 'administrafish');
+    await tester.tap(find.text('INICIAR SESIÓN'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Panel de administrador'), findsOneWidget);
+    await tester.tap(find.byTooltip('Panel de administrador'));
+    await tester.pumpAndSettle();
+    expect(find.text('> COMUNICADOS DEL TABLÓN'), findsOneWidget);
+    expect(find.text('> CANCIONES Y ENLACES DE VIDEO'), findsNothing);
+    await tester.tap(find.text('NUEVO COMUNICADO'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), '2026-11-23');
+    await tester.enterText(
+      find.byType(TextFormField).at(1),
+      'AVISO ADMIN TEST',
+    );
+    await tester.enterText(find.byType(TextFormField).at(2), 'LA PECERA');
+    await tester.enterText(
+      find.byType(TextFormField).at(4),
+      'Mensaje de prueba',
+    );
+    await tester.tap(find.text('GUARDAR'));
+    await tester.pumpAndSettle();
+    expect(find.text('AVISO ADMIN TEST'), findsOneWidget);
+
+    await tester.tap(find.text('CANCIONES / VIDEOS'));
+    await tester.pumpAndSettle();
+    expect(find.text('> CANCIONES Y ENLACES DE VIDEO'), findsOneWidget);
   });
 }

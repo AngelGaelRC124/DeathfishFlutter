@@ -14,23 +14,31 @@ import '../models/user_session.dart';
 class DataService {
   DataService._({
     required this.bandInfo,
-    required this.feed,
-    required this.tracks,
-    required this.merch,
+    required List<FeedItem> feed,
+    required List<Track> tracks,
+    required List<MerchItem> merch,
     required this._preferences,
-  });
+  }) : _feed = List.unmodifiable(feed),
+       _tracks = List.unmodifiable(tracks),
+       _merch = List.unmodifiable(merch);
 
   static const _sessionKey = 'deathfish_session';
   static const _favoritesKey = 'deathfish_favorite_track_ids';
   static const _cartKey = 'deathfish_merch_cart';
+  static const _contentKey = 'deathfish_content_overrides';
+  static const _adminUsername = 'adminfish';
+  static const _adminPassword = 'administrafish';
 
   final SharedPreferences _preferences;
   final BandInfo bandInfo;
-  final List<FeedItem> feed;
-  final List<Track> tracks;
-  final List<MerchItem> merch;
+  List<FeedItem> _feed;
+  List<Track> _tracks;
+  List<MerchItem> _merch;
   UserSession? _session;
 
+  List<FeedItem> get feed => _feed;
+  List<Track> get tracks => _tracks;
+  List<MerchItem> get merch => _merch;
   UserSession? get session => _session;
   Set<String> get favoriteIds =>
       Set<String>.unmodifiable(_preferences.getStringList(_favoritesKey) ?? []);
@@ -69,8 +77,11 @@ class DataService {
       return Map<String, dynamic>.from(value);
     }
 
-    List<T> listFor<T>(String key, T Function(Map<String, dynamic>) parse) {
-      final value = json[key];
+    List<T> parseList<T>(
+      Object? value,
+      String key,
+      T Function(Map<String, dynamic>) parse,
+    ) {
       if (value is! List) {
         throw FormatException('La sección "$key" no es una lista válida.');
       }
@@ -85,11 +96,27 @@ class DataService {
     }
 
     final preferences = await SharedPreferences.getInstance();
+    final savedContent = preferences.getString(_contentKey);
+    final overrides = savedContent == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(jsonDecode(savedContent) as Map);
     final service = DataService._(
       bandInfo: BandInfo.fromJson(objectFor('band_info')),
-      feed: listFor('feed', FeedItem.fromJson),
-      tracks: listFor('tracks', Track.fromJson),
-      merch: listFor('merch', MerchItem.fromJson),
+      feed: parseList(
+        overrides['feed'] ?? json['feed'],
+        'feed',
+        FeedItem.fromJson,
+      ),
+      tracks: parseList(
+        overrides['tracks'] ?? json['tracks'],
+        'tracks',
+        Track.fromJson,
+      ),
+      merch: parseList(
+        overrides['merch'] ?? json['merch'],
+        'merch',
+        MerchItem.fromJson,
+      ),
       preferences: preferences,
     );
     final savedSession = preferences.getString(_sessionKey);
@@ -103,8 +130,24 @@ class DataService {
 
   Future<UserSession> login(String email, String password) async {
     final normalizedEmail = email.trim();
+    if (normalizedEmail.toLowerCase() == _adminUsername) {
+      if (password != _adminPassword) {
+        throw const FormatException(
+          'Usuario o contraseña de administrador incorrectos.',
+        );
+      }
+      final session = UserSession(
+        email: _adminUsername,
+        isGuest: false,
+        isAdmin: true,
+      );
+      await _saveSession(session);
+      return session;
+    }
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(normalizedEmail)) {
-      throw const FormatException('Ingresa un correo electrónico válido.');
+      throw const FormatException(
+        'Ingresa un correo válido o el usuario admin.',
+      );
     }
     if (password.length < 6) {
       throw const FormatException(
@@ -130,6 +173,145 @@ class DataService {
   Future<void> logout() async {
     await _preferences.remove(_sessionKey);
     _session = null;
+  }
+
+  Future<void> saveFeedItem(FeedItem item) async {
+    _requireAdmin();
+    if (item.id.trim().isEmpty || item.title.trim().isEmpty) {
+      throw const FormatException(
+        'El comunicado necesita título e identificador.',
+      );
+    }
+    final updated = _feed.toList();
+    final index = updated.indexWhere((entry) => entry.id == item.id);
+    if (index == -1) {
+      updated.add(item);
+    } else {
+      updated[index] = item;
+    }
+    await _saveContent(feed: updated);
+  }
+
+  Future<void> deleteFeedItem(String id) async {
+    _requireAdmin();
+    final updated = _feed.where((entry) => entry.id != id).toList();
+    if (updated.length == _feed.length) {
+      throw ArgumentError.value(id, 'id', 'Comunicado desconocido.');
+    }
+    await _saveContent(feed: updated);
+  }
+
+  Future<void> saveTrack(Track track) async {
+    _requireAdmin();
+    if (track.id.trim().isEmpty ||
+        track.title.trim().isEmpty ||
+        track.youtubeUrl.trim().isEmpty) {
+      throw const FormatException(
+        'La canción necesita título, identificador y URL de video.',
+      );
+    }
+    final videoUri = Uri.tryParse(track.youtubeUrl);
+    if (videoUri == null ||
+        !videoUri.hasAuthority ||
+        !{'http', 'https'}.contains(videoUri.scheme)) {
+      throw const FormatException('Ingresa una URL de video válida.');
+    }
+    final updated = _tracks.toList();
+    final index = updated.indexWhere((entry) => entry.id == track.id);
+    if (index == -1) {
+      updated.add(track);
+    } else {
+      updated[index] = track;
+    }
+    await _saveContent(tracks: updated);
+  }
+
+  Future<void> deleteTrack(String id) async {
+    _requireAdmin();
+    final updated = _tracks.where((entry) => entry.id != id).toList();
+    if (updated.length == _tracks.length) {
+      throw ArgumentError.value(id, 'id', 'Canción desconocida.');
+    }
+    await _saveContent(tracks: updated);
+  }
+
+  Future<void> saveMerchItem(MerchItem item) async {
+    _requireAdmin();
+    if (item.id.trim().isEmpty ||
+        item.name.trim().isEmpty ||
+        item.image.trim().isEmpty ||
+        item.sizes.isEmpty ||
+        item.price < 0 ||
+        item.stock < 0) {
+      throw const FormatException(
+        'Revisa nombre, imagen, tallas, precio y stock del producto.',
+      );
+    }
+    final itemsInCart = cartItems
+        .where((entry) => entry.productId == item.id)
+        .toList();
+    final cartQuantity = itemsInCart.fold(
+      0,
+      (total, entry) => total + entry.quantity,
+    );
+    if (cartQuantity > item.stock ||
+        itemsInCart.any((entry) => !item.sizes.contains(entry.size))) {
+      throw StateError(
+        'El stock o las tallas no pueden quedar por debajo de lo que ya está en el carrito.',
+      );
+    }
+    final updated = _merch.toList();
+    final index = updated.indexWhere((entry) => entry.id == item.id);
+    if (index == -1) {
+      updated.add(item);
+    } else {
+      updated[index] = item;
+    }
+    await _saveContent(merch: updated);
+  }
+
+  Future<void> deleteMerchItem(String id) async {
+    _requireAdmin();
+    if (cartItems.any((entry) => entry.productId == id)) {
+      throw StateError(
+        'Quita primero este producto del carrito antes de eliminarlo.',
+      );
+    }
+    final updated = _merch.where((entry) => entry.id != id).toList();
+    if (updated.length == _merch.length) {
+      throw ArgumentError.value(id, 'id', 'Producto desconocido.');
+    }
+    await _saveContent(merch: updated);
+  }
+
+  void _requireAdmin() {
+    if (_session?.isAdmin != true) {
+      throw StateError('Esta acción requiere una sesión de administrador.');
+    }
+  }
+
+  Future<void> _saveContent({
+    List<FeedItem>? feed,
+    List<Track>? tracks,
+    List<MerchItem>? merch,
+  }) async {
+    final updatedFeed = feed ?? _feed;
+    final updatedTracks = tracks ?? _tracks;
+    final updatedMerch = merch ?? _merch;
+    final saved = await _preferences.setString(
+      _contentKey,
+      jsonEncode({
+        'feed': updatedFeed.map((item) => item.toJson()).toList(),
+        'tracks': updatedTracks.map((item) => item.toJson()).toList(),
+        'merch': updatedMerch.map((item) => item.toJson()).toList(),
+      }),
+    );
+    if (!saved) {
+      throw StateError('No se pudieron guardar los cambios del administrador.');
+    }
+    _feed = List.unmodifiable(updatedFeed);
+    _tracks = List.unmodifiable(updatedTracks);
+    _merch = List.unmodifiable(updatedMerch);
   }
 
   Future<bool> toggleFavorite(String trackId) async {

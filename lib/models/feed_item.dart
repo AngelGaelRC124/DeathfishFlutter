@@ -25,4 +25,13 @@ class FeedItem {
       tag: json['tag'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'fecha': date,
+    'titulo': title,
+    'ubicacion': location,
+    'descripcion': description,
+    'tag': tag,
+  };
 }

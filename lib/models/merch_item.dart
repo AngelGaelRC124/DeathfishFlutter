@@ -33,4 +33,15 @@ class MerchItem {
       description: json['descripcion'] as String,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'nombre': name,
+    'categoria': category,
+    'precio': price,
+    'tallas': sizes,
+    'stock': stock,
+    'imagen': image,
+    'descripcion': description,
+  };
 }
