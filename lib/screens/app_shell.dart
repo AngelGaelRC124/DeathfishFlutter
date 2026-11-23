@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/user_session.dart';
+import '../services/auth_service.dart';
 import '../services/data_service.dart';
+import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 import 'admin_screen.dart';
@@ -14,14 +16,16 @@ import 'stream_screen.dart';
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
+    required this.authService,
+    required this.firestoreService,
     required this.dataService,
     required this.session,
-    required this.onLogout,
   });
 
+  final AuthGateway authService;
+  final FirestoreGateway firestoreService;
   final DataService dataService;
   final UserSession session;
-  final Future<void> Function() onLogout;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -32,14 +36,36 @@ class _AppShellState extends State<AppShell> {
   bool _showAdmin = false;
 
   @override
+  void didUpdateWidget(covariant AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session.isAdmin && !widget.session.isAdmin) {
+      _showAdmin = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final data = widget.dataService;
     final pages = [
-      InicioScreen(dataService: data),
-      MerchScreen(dataService: data),
-      ArchivoScreen(dataService: data),
-      StreamScreen(dataService: data),
-      ContactoScreen(dataService: data),
+      InicioScreen(
+        dataService: data,
+        firestoreService: widget.firestoreService,
+      ),
+      MerchScreen(dataService: data, firestoreService: widget.firestoreService),
+      ArchivoScreen(
+        dataService: data,
+        firestoreService: widget.firestoreService,
+        session: widget.session,
+      ),
+      StreamScreen(
+        dataService: data,
+        firestoreService: widget.firestoreService,
+      ),
+      ContactoScreen(
+        dataService: data,
+        firestoreService: widget.firestoreService,
+        session: widget.session,
+      ),
     ];
 
     return Scaffold(
@@ -114,7 +140,7 @@ class _AppShellState extends State<AppShell> {
                       tooltip: 'Cerrar sesión',
                       onPressed: () async {
                         try {
-                          await widget.onLogout();
+                          await widget.authService.signOut();
                         } catch (error) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -132,7 +158,11 @@ class _AppShellState extends State<AppShell> {
               ),
               Expanded(
                 child: _showAdmin
-                    ? AdminScreen(dataService: data)
+                    ? AdminScreen(
+                        dataService: data,
+                        firestoreService: widget.firestoreService,
+                        session: widget.session,
+                      )
                     : IndexedStack(index: _selectedIndex, children: pages),
               ),
               Padding(

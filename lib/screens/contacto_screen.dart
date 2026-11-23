@@ -2,14 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/user_session.dart';
 import '../services/data_service.dart';
+import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 
 class ContactoScreen extends StatefulWidget {
-  const ContactoScreen({super.key, required this.dataService});
+  const ContactoScreen({
+    super.key,
+    required this.dataService,
+    required this.firestoreService,
+    required this.session,
+  });
 
   final DataService dataService;
+  final FirestoreGateway firestoreService;
+  final UserSession session;
 
   @override
   State<ContactoScreen> createState() => _ContactoScreenState();
@@ -48,6 +57,7 @@ class _ContactoScreenState extends State<ContactoScreen> {
     });
     try {
       await widget.dataService.sendContactMessage(
+        firestoreService: widget.firestoreService,
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
         subject: _subjectController.text.trim(),
@@ -96,6 +106,13 @@ class _ContactoScreenState extends State<ContactoScreen> {
                   'Abre una línea directa con DEATHFISH.',
                   style: TextStyle(color: Colors.white70),
                 ),
+                if (widget.session.isGuest) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'EL ACCESO INVITADO ES DE SOLO LECTURA. INICIA SESIÓN CON UNA CUENTA FAN PARA ENVIAR MENSAJES.',
+                    style: TextStyle(color: TerminalTheme.red, fontSize: 10),
+                  ),
+                ],
                 const SizedBox(height: 18),
                 TextFormField(
                   controller: _nameController,
@@ -160,7 +177,9 @@ class _ContactoScreenState extends State<ContactoScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: _isSending || _sent ? null : _send,
+                    onPressed: _isSending || _sent || widget.session.isGuest
+                        ? null
+                        : _send,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       backgroundColor: _sent

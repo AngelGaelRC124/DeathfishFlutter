@@ -1,15 +1,23 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../models/cart_item.dart';
 import '../models/merch_item.dart';
 import '../services/data_service.dart';
+import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 
 class MerchScreen extends StatefulWidget {
-  const MerchScreen({super.key, required this.dataService});
+  const MerchScreen({
+    super.key,
+    required this.dataService,
+    required this.firestoreService,
+  });
 
   final DataService dataService;
+  final FirestoreGateway firestoreService;
 
   @override
   State<MerchScreen> createState() => _MerchScreenState();
@@ -27,7 +35,7 @@ class _MerchScreenState extends State<MerchScreen> {
   Future<void> _addToCart(MerchItem product) async {
     final size = _selectedSizes[product.id] ?? product.sizes.first;
     try {
-      await widget.dataService.addToCart(product.id, size);
+      await widget.dataService.addToCart(product, size);
       if (mounted) {
         setState(() {});
         _showMessage('${product.name} // AGREGADO AL CARRITO');
@@ -37,7 +45,7 @@ class _MerchScreenState extends State<MerchScreen> {
     }
   }
 
-  Future<void> _openCart() async {
+  Future<void> _openCart(List<MerchItem> products) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -89,9 +97,31 @@ class _MerchScreenState extends State<MerchScreen> {
                           separatorBuilder: (_, _) => const Divider(),
                           itemBuilder: (context, index) {
                             final item = items[index];
-                            final product = widget.dataService.merch.firstWhere(
+                            final matches = products.where(
                               (entry) => entry.id == item.productId,
                             );
+                            if (matches.isEmpty) {
+                              return ListTile(
+                                title: const Text(
+                                  'PRODUCTO YA NO DISPONIBLE',
+                                  style: TextStyle(color: TerminalTheme.red),
+                                ),
+                                trailing: IconButton(
+                                  tooltip: 'Quitar del carrito',
+                                  onPressed: () async {
+                                    await widget.dataService.setCartQuantity(
+                                      item,
+                                      0,
+                                      products,
+                                    );
+                                    updateSheet(() {});
+                                    if (mounted) setState(() {});
+                                  },
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                              );
+                            }
+                            final product = matches.first;
                             final otherSizesQuantity = items
                                 .where(
                                   (entry) =>
@@ -111,6 +141,7 @@ class _MerchScreenState extends State<MerchScreen> {
                                   await widget.dataService.setCartQuantity(
                                     item,
                                     quantity,
+                                    products,
                                   );
                                   updateSheet(() {});
                                   if (mounted) setState(() {});
@@ -128,7 +159,7 @@ class _MerchScreenState extends State<MerchScreen> {
                       children: [
                         const Text('TOTAL'),
                         Text(
-                          '\$${widget.dataService.cartTotal.toStringAsFixed(2)}',
+                          '\$${widget.dataService.cartTotalFor(products).toStringAsFixed(2)}',
                           style: const TextStyle(
                             color: TerminalTheme.red,
                             fontWeight: FontWeight.bold,
@@ -155,74 +186,105 @@ class _MerchScreenState extends State<MerchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final products = widget.dataService.merch;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth > 700 ? 3 : 2;
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              sliver: SliverToBoxAdapter(
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        '> MERCH OFICIAL',
-                        style: TextStyle(
-                          color: TerminalTheme.red,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _openCart,
-                      icon: const Icon(Icons.shopping_cart_outlined, size: 16),
-                      label: Text('CARRITO (${widget.dataService.cartCount})'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: TerminalTheme.red,
-                        side: BorderSide(
-                          color: TerminalTheme.red.withValues(alpha: 0.5),
-                        ),
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.zero,
-                        ),
-                        textStyle: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    return StreamBuilder<List<MerchItem>>(
+      stream: widget.firestoreService.watchMerch(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'ERROR AL CARGAR MERCH: ${snapshot.error}',
+              style: const TextStyle(color: TerminalTheme.red),
+              textAlign: TextAlign.center,
             ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 18),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: columns == 2 ? 0.53 : 0.68,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _MerchCard(
-                    product: products[index],
-                    selectedSize:
-                        _selectedSizes[products[index].id] ??
-                        products[index].sizes.first,
-                    onSizeChanged: (size) => setState(
-                      () => _selectedSizes[products[index].id] = size,
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(color: TerminalTheme.red),
+          );
+        }
+        final products = snapshot.data!;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth > 700 ? 3 : 2;
+            return CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  sliver: SliverToBoxAdapter(
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '> MERCH OFICIAL',
+                            style: TextStyle(
+                              color: TerminalTheme.red,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _openCart(products),
+                          icon: const Icon(
+                            Icons.shopping_cart_outlined,
+                            size: 16,
+                          ),
+                          label: Text(
+                            'CARRITO (${widget.dataService.cartCount})',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: TerminalTheme.red,
+                            side: BorderSide(
+                              color: TerminalTheme.red.withValues(alpha: 0.5),
+                            ),
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero,
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    onAdd: () => _addToCart(products[index]),
                   ),
-                  childCount: products.length,
                 ),
-              ),
-            ),
-          ],
+                if (products.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: Text('NO HAY PRODUCTOS DISPONIBLES.')),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 18),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                        childAspectRatio: columns == 2 ? 0.53 : 0.68,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => _MerchCard(
+                          product: products[index],
+                          dataService: widget.dataService,
+                          selectedSize:
+                              _selectedSizes[products[index].id] ??
+                              products[index].sizes.first,
+                          onSizeChanged: (size) => setState(
+                            () => _selectedSizes[products[index].id] = size,
+                          ),
+                          onAdd: () => _addToCart(products[index]),
+                        ),
+                        childCount: products.length,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
@@ -232,12 +294,14 @@ class _MerchScreenState extends State<MerchScreen> {
 class _MerchCard extends StatelessWidget {
   const _MerchCard({
     required this.product,
+    required this.dataService,
     required this.selectedSize,
     required this.onSizeChanged,
     required this.onAdd,
   });
 
   final MerchItem product;
+  final DataService dataService;
   final String selectedSize;
   final ValueChanged<String> onSizeChanged;
   final VoidCallback onAdd;
@@ -251,19 +315,13 @@ class _MerchCard extends StatelessWidget {
         children: [
           Expanded(
             flex: 5,
-            child: Image.asset(
-              product.image,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => const ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: Icon(
-                    Icons.image_not_supported,
-                    color: TerminalTheme.red,
+            child: product.imageMediaId == null
+                ? _assetImage(product.image)
+                : _StoredMerchImage(
+                    dataService: dataService,
+                    mediaId: product.imageMediaId!,
+                    fallbackAsset: product.image,
                   ),
-                ),
-              ),
-            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -328,6 +386,105 @@ class _MerchCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _assetImage(String asset) {
+    if (asset.isEmpty) return _imageError();
+    return Image.asset(
+      asset,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => _imageError(),
+    );
+  }
+
+  Widget _imageError() => const ColoredBox(
+    color: Colors.black,
+    child: Center(
+      child: Icon(Icons.image_not_supported, color: TerminalTheme.red),
+    ),
+  );
+}
+
+class _StoredMerchImage extends StatefulWidget {
+  const _StoredMerchImage({
+    required this.dataService,
+    required this.mediaId,
+    required this.fallbackAsset,
+  });
+
+  final DataService dataService;
+  final String mediaId;
+  final String fallbackAsset;
+
+  @override
+  State<_StoredMerchImage> createState() => _StoredMerchImageState();
+}
+
+class _StoredMerchImageState extends State<_StoredMerchImage> {
+  late Future<Uint8List?> _imageBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  @override
+  void didUpdateWidget(covariant _StoredMerchImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaId != widget.mediaId) _loadImage();
+  }
+
+  void _loadImage() {
+    _imageBytes = widget.dataService.readMedia(widget.mediaId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uint8List?>(
+      future: _imageBytes,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (snapshot.hasError) {
+          return widget.fallbackAsset.isEmpty
+              ? _imageError()
+              : Image.asset(
+                  widget.fallbackAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => _imageError(),
+                );
+        }
+        if (bytes != null) {
+          return Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _imageError(),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: CircularProgressIndicator(color: TerminalTheme.red),
+            ),
+          );
+        }
+        return widget.fallbackAsset.isEmpty
+            ? _imageError()
+            : Image.asset(
+                widget.fallbackAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _imageError(),
+              );
+      },
+    );
+  }
+
+  Widget _imageError() => const ColoredBox(
+    color: Colors.black,
+    child: Center(
+      child: Icon(Icons.image_not_supported, color: TerminalTheme.red),
+    ),
+  );
 }
 
 class _CartRow extends StatelessWidget {

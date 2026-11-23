@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../models/track.dart';
+import '../models/user_session.dart';
 import '../services/data_service.dart';
+import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 
 class ArchivoScreen extends StatefulWidget {
-  const ArchivoScreen({super.key, required this.dataService});
+  const ArchivoScreen({
+    super.key,
+    required this.dataService,
+    required this.firestoreService,
+    required this.session,
+  });
 
   final DataService dataService;
+  final FirestoreGateway firestoreService;
+  final UserSession session;
 
   @override
   State<ArchivoScreen> createState() => _ArchivoScreenState();
@@ -16,6 +25,17 @@ class ArchivoScreen extends StatefulWidget {
 
 class _ArchivoScreenState extends State<ArchivoScreen> {
   bool _favoritesOnly = false;
+  late final Stream<Set<String>> _favorites;
+
+  @override
+  void initState() {
+    super.initState();
+    _favorites =
+        (widget.session.isGuest
+                ? Stream.value(<String>{})
+                : widget.firestoreService.watchFavoriteIds(widget.session.uid))
+            .asBroadcastStream();
+  }
 
   Future<void> _openLyrics(Track track) async {
     await showModalBottomSheet<void>(
@@ -23,9 +43,11 @@ class _ArchivoScreenState extends State<ArchivoScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.black,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, updateSheet) {
-          final isFavorite = widget.dataService.favoriteIds.contains(track.id);
+      builder: (sheetContext) => StreamBuilder<Set<String>>(
+        stream: _favorites,
+        builder: (context, favoriteSnapshot) {
+          final favorites = favoriteSnapshot.data ?? const <String>{};
+          final isFavorite = favorites.contains(track.id);
           return SafeArea(
             child: SizedBox(
               height: MediaQuery.of(context).size.height * 0.82,
@@ -46,26 +68,34 @@ class _ArchivoScreenState extends State<ArchivoScreen> {
                           ),
                         ),
                         IconButton(
-                          tooltip: isFavorite
-                              ? 'Quitar de favoritos offline'
-                              : 'Guardar en favoritos offline',
-                          onPressed: () async {
-                            try {
-                              await widget.dataService.toggleFavorite(track.id);
-                              if (context.mounted) updateSheet(() {});
-                              if (mounted) setState(() {});
-                            } catch (error) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'NO SE PUDO GUARDAR FAVORITO: $error',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          },
+                          tooltip: widget.session.isGuest
+                              ? 'Inicia sesión para guardar favoritos'
+                              : isFavorite
+                              ? 'Quitar de favoritos'
+                              : 'Guardar en favoritos',
+                          onPressed: widget.session.isGuest
+                              ? null
+                              : () async {
+                                  try {
+                                    await widget.firestoreService.setFavorite(
+                                      widget.session.uid,
+                                      track.id,
+                                      !isFavorite,
+                                    );
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'NO SE PUDO GUARDAR FAVORITO: $error',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
                           icon: Icon(
                             isFavorite ? Icons.favorite : Icons.favorite_border,
                             color: TerminalTheme.red,
@@ -112,9 +142,9 @@ class _ArchivoScreenState extends State<ArchivoScreen> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      isFavorite
-                          ? 'FAVORITO GUARDADO EN ESTE DISPOSITIVO'
-                          : 'MARCA COMO FAVORITO PARA ACCEDER OFFLINE',
+                      widget.session.isGuest
+                          ? 'INICIA SESIÓN PARA SINCRONIZAR FAVORITOS'
+                          : 'FAVORITOS SINCRONIZADOS CON TU CUENTA',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white54,
@@ -129,63 +159,99 @@ class _ArchivoScreenState extends State<ArchivoScreen> {
         },
       ),
     );
-    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final favorites = widget.dataService.favoriteIds;
-    final tracks = widget.dataService.tracks
-        .where((track) => !_favoritesOnly || favorites.contains(track.id))
-        .toList();
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                '> ARCHIVO DE AUDIO',
-                style: TextStyle(
-                  color: TerminalTheme.red,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.3,
-                ),
-              ),
-            ),
-            FilterChip(
-              selected: _favoritesOnly,
-              label: Text(_favoritesOnly ? 'FAVORITOS' : 'TODOS'),
-              onSelected: (value) => setState(() => _favoritesOnly = value),
-              selectedColor: TerminalTheme.red.withValues(alpha: 0.3),
-              checkmarkColor: TerminalTheme.red,
-              side: BorderSide(
-                color: TerminalTheme.red.withValues(alpha: 0.35),
-              ),
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (tracks.isEmpty)
-          const TerminalPanel(
+    return StreamBuilder<List<Track>>(
+      stream: widget.firestoreService.watchTracks(),
+      builder: (context, trackSnapshot) {
+        if (trackSnapshot.hasError) {
+          return Center(
             child: Text(
-              'NO HAY CANCIONES FAVORITAS GUARDADAS.',
+              'ERROR AL CARGAR EL ARCHIVO: ${trackSnapshot.error}',
+              style: const TextStyle(color: TerminalTheme.red),
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70),
             ),
-          ),
-        for (final track in tracks) ...[
-          _TrackRow(
-            track: track,
-            isFavorite: favorites.contains(track.id),
-            onTap: () => _openLyrics(track),
-          ),
-          const SizedBox(height: 9),
-        ],
-      ],
+          );
+        }
+        if (!trackSnapshot.hasData) {
+          return const Center(
+            child: CircularProgressIndicator(color: TerminalTheme.red),
+          );
+        }
+        return StreamBuilder<Set<String>>(
+          stream: _favorites,
+          builder: (context, favoriteSnapshot) {
+            if (favoriteSnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'ERROR AL CARGAR FAVORITOS: ${favoriteSnapshot.error}',
+                  style: const TextStyle(color: TerminalTheme.red),
+                ),
+              );
+            }
+            final favorites = favoriteSnapshot.data ?? const <String>{};
+            final tracks = trackSnapshot.data!
+                .where(
+                  (track) => !_favoritesOnly || favorites.contains(track.id),
+                )
+                .toList();
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '> ARCHIVO DE AUDIO',
+                        style: TextStyle(
+                          color: TerminalTheme.red,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.3,
+                        ),
+                      ),
+                    ),
+                    FilterChip(
+                      selected: _favoritesOnly,
+                      label: Text(_favoritesOnly ? 'FAVORITOS' : 'TODOS'),
+                      onSelected: (value) =>
+                          setState(() => _favoritesOnly = value),
+                      selectedColor: TerminalTheme.red.withValues(alpha: 0.3),
+                      checkmarkColor: TerminalTheme.red,
+                      side: BorderSide(
+                        color: TerminalTheme.red.withValues(alpha: 0.35),
+                      ),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (tracks.isEmpty)
+                  TerminalPanel(
+                    child: Text(
+                      _favoritesOnly
+                          ? 'NO HAY CANCIONES FAVORITAS GUARDADAS.'
+                          : 'NO HAY CANCIONES DISPONIBLES.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                for (final track in tracks) ...[
+                  _TrackRow(
+                    track: track,
+                    isFavorite: favorites.contains(track.id),
+                    onTap: () => _openLyrics(track),
+                  ),
+                  const SizedBox(height: 9),
+                ],
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

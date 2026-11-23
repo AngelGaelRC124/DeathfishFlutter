@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "720095066253",
+    "project_id": "deathfish-app",
+    "storage_bucket": "deathfish-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:720095066253:android:ac2cdd9898f8da83fccac4",
+        "android_client_info": {
+          "package_name": "com.example.deathfishflutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB5luD0-CggKNCf-MIFPz7U3Kq7iHofbQw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

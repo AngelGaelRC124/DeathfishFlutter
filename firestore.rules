@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function admin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin';
+    }
+
+    function registeredUser() {
+      return signedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    match /feed/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if admin();
+    }
+
+    match /tracks/{trackId} {
+      allow read: if true;
+      allow create, update, delete: if admin();
+    }
+
+    match /merch/{productId} {
+      allow read: if true;
+      allow create, update, delete: if admin();
+    }
+
+    match /messages/{messageId} {
+      allow create: if registeredUser()
+        && request.resource.data.keys().hasAll([
+          'id', 'remitente', 'email', 'asunto', 'cuerpo', 'estado', 'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id', 'remitente', 'email', 'asunto', 'cuerpo', 'estado', 'createdAt'
+        ])
+        && request.resource.data.id == messageId
+        && request.resource.data.remitente is string
+        && request.resource.data.email is string
+        && request.resource.data.asunto is string
+        && request.resource.data.cuerpo is string
+        && request.resource.data.estado == 'pendiente'
+        && request.resource.data.createdAt == request.time;
+      allow read, update, delete: if admin();
+    }
+
+    match /users/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || admin();
+      allow create: if registeredUser()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll([
+          'uid', 'nombre', 'email', 'rol', 'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'uid', 'nombre', 'email', 'rol', 'createdAt'
+        ])
+        && request.resource.data.uid == uid
+        && request.resource.data.nombre is string
+        && request.resource.data.email is string
+        && request.resource.data.rol == 'fan'
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if admin();
+
+      match /favorites/{trackId} {
+        allow read: if (signedIn() && request.auth.uid == uid) || admin();
+        allow create: if registeredUser()
+          && request.auth.uid == uid
+          && request.resource.data.keys().hasAll(['trackId', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['trackId', 'createdAt'])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.trackId == trackId;
+        allow delete: if registeredUser() && request.auth.uid == uid;
+        allow update: if false;
+      }
+    }
+  }
+}

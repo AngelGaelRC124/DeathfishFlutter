@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../services/data_service.dart';
+import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 
 class InicioScreen extends StatelessWidget {
-  const InicioScreen({super.key, required this.dataService});
+  const InicioScreen({
+    super.key,
+    required this.dataService,
+    required this.firestoreService,
+  });
 
   final DataService dataService;
+  final FirestoreGateway firestoreService;
 
   @override
   Widget build(BuildContext context) {
@@ -99,58 +105,89 @@ class InicioScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        for (final item in dataService.feed) ...[
-          TerminalPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        StreamBuilder(
+          stream: firestoreService.watchFeed(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return TerminalPanel(
+                child: Text(
+                  'ERROR AL CARGAR COMUNICADOS: ${snapshot.error}',
+                  style: const TextStyle(color: TerminalTheme.red),
+                ),
+              );
+            }
+            if (!snapshot.hasData) {
+              return const Center(
+                child: CircularProgressIndicator(color: TerminalTheme.red),
+              );
+            }
+            final feed = snapshot.data!;
+            if (feed.isEmpty) {
+              return const TerminalPanel(
+                child: Text('NO HAY COMUNICADOS DISPONIBLES.'),
+              );
+            }
+            return Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.tag,
-                        style: const TextStyle(
-                          color: TerminalTheme.red,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
+                for (final item in feed) ...[
+                  TerminalPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.tag,
+                                style: const TextStyle(
+                                  color: TerminalTheme.red,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              item.date,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.description,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '// ${item.location}',
+                          style: const TextStyle(
+                            color: TerminalTheme.red,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      item.date,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  item.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    height: 1.4,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item.description,
-                  style: const TextStyle(color: Colors.white70, height: 1.5),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '// ${item.location}',
-                  style: const TextStyle(
-                    color: TerminalTheme.red,
-                    fontSize: 11,
-                  ),
-                ),
+                  const SizedBox(height: 12),
+                ],
               ],
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            );
+          },
+        ),
       ],
     );
   }

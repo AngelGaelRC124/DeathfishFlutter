@@ -1,17 +1,22 @@
-# deathfishflutter
+# DEATHFISH: Terminal & Hub Móvil
 
-A new Flutter project.
+Aplicación Flutter de DEATHFISH con Firebase Authentication y Cloud Firestore.
 
-## Getting Started
+## Preparar Firebase
 
-This project is a starting point for a Flutter application.
+1. Configura las aplicaciones del proyecto con `flutterfire configure` y verifica `lib/firebase_options.dart`.
+2. En Firebase Authentication, habilita los proveedores **Correo electrónico/contraseña** y **Anónimo**.
+3. Crea la base de datos de Cloud Firestore y publica las reglas de `firestore.rules`:
 
-A few resources to get you started if this is your first Flutter project:
+   ```sh
+   firebase deploy --only firestore:rules
+   ```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+4. Registra una cuenta desde la app. En Firestore, cambia `users/{uid}.rol` de `fan` a `admin` para la cuenta administradora.
+5. Inicia sesión con esa cuenta. La app carga `assets/data.json` en `feed`, `tracks` y `merch` si cada colección está vacía.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+La inicialización de contenido requiere una sesión admin para que los clientes invitados no puedan escribir. Los invitados tienen acceso de solo lectura; el formulario de contacto requiere una cuenta registrada. Las modificaciones de `feed`, canciones, merch y favoritos se sincronizan con Firestore, que mantiene persistencia offline habilitada.
+
+## Datos que permanecen locales
+
+El carrito sigue persistiendo en el dispositivo. Las imágenes y audios cargados desde archivos se guardan en Hive local; sus referencias en Firestore no sincronizan los bytes entre dispositivos. Para compartir esos archivos hace falta habilitar Firebase Storage y migrar esos medios al bucket.

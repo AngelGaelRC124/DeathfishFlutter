@@ -1,19 +1,20 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../models/user_session.dart';
-import '../services/data_service.dart';
+import '../models/band_info.dart';
+import '../services/auth_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
-    required this.dataService,
-    required this.onAuthenticated,
+    required this.authService,
+    required this.bandInfo,
   });
 
-  final DataService dataService;
-  final ValueChanged<UserSession> onAuthenticated;
+  final AuthGateway authService;
+  final BandInfo bandInfo;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -21,40 +22,67 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _identifierController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isRegistering = false;
   bool _isLoading = false;
   String? _error;
 
   @override
   void dispose() {
-    _identifierController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _login({required bool asGuest}) async {
+  Future<void> _submit({required bool asGuest}) async {
     if (!asGuest && !_formKey.currentState!.validate()) return;
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      final session = asGuest
-          ? await widget.dataService.loginAsGuest()
-          : await widget.dataService.login(
-              _identifierController.text,
-              _passwordController.text,
-            );
-      if (mounted) widget.onAuthenticated(session);
-    } on FormatException catch (error) {
-      if (mounted) setState(() => _error = error.message);
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = 'NO SE PUDO GUARDAR LA SESIÓN: $error');
+      if (asGuest) {
+        await widget.authService.signInAsGuest();
+      } else if (_isRegistering) {
+        await widget.authService.register(
+          _nameController.text,
+          _emailController.text,
+          _passwordController.text,
+        );
+      } else {
+        await widget.authService.signIn(
+          _emailController.text,
+          _passwordController.text,
+        );
       }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) setState(() => _error = _authError(error));
+    } catch (error) {
+      if (mounted) setState(() => _error = 'ERROR DE AUTENTICACIÓN: $error');
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  String _authError(FirebaseAuthException error) {
+    switch (error.code) {
+      case 'invalid-credential':
+      case 'wrong-password':
+      case 'user-not-found':
+        return 'CORREO O CONTRASEÑA INCORRECTOS.';
+      case 'email-already-in-use':
+        return 'ESE CORREO YA TIENE UNA CUENTA.';
+      case 'invalid-email':
+        return 'EL CORREO NO ES VÁLIDO.';
+      case 'weak-password':
+        return 'LA CONTRASEÑA DEBE TENER AL MENOS 6 CARACTERES.';
+      case 'operation-not-allowed':
+        return 'HABILITA ESTE MÉTODO DE ACCESO EN FIREBASE AUTHENTICATION.';
+      default:
+        return 'FIREBASE AUTH ${error.code}: ${error.message ?? 'ERROR'}';
     }
   }
 
@@ -77,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          widget.dataService.bandInfo.name,
+                          widget.bandInfo.name,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 24,
@@ -87,7 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          widget.dataService.bandInfo.label,
+                          widget.bandInfo.label,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: TerminalTheme.red,
@@ -95,40 +123,54 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 28),
-                        const Text(
-                          '> TERMINAL DE ACCESO',
-                          style: TextStyle(color: TerminalTheme.red),
+                        Text(
+                          _isRegistering
+                              ? '> REGISTRO DE NUEVA CUENTA'
+                              : '> TERMINAL DE ACCESO',
+                          style: const TextStyle(color: TerminalTheme.red),
                         ),
                         const SizedBox(height: 16),
+                        if (_isRegistering) ...[
+                          TextFormField(
+                            controller: _nameController,
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'NOMBRE',
+                            ),
+                            validator: (value) =>
+                                (value?.trim().isNotEmpty ?? false)
+                                ? null
+                                : 'Ingresa tu nombre.',
+                          ),
+                          const SizedBox(height: 14),
+                        ],
                         TextFormField(
-                          controller: _identifierController,
-                          keyboardType: TextInputType.text,
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: 'CORREO ELECTRÓNICO / USUARIO',
+                            labelText: 'CORREO ELECTRÓNICO',
                           ),
                           validator: (value) {
-                            final identifier = value?.trim() ?? '';
-                            return identifier.toLowerCase() == 'adminfish' ||
-                                    RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                                        .hasMatch(identifier)
+                            final email = value?.trim() ?? '';
+                            return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                                    .hasMatch(email)
                                 ? null
-                                : 'Ingresa un correo o usuario válido.';
+                                : 'Ingresa un correo válido.';
                           },
                         ),
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: _passwordController,
                           obscureText: true,
-                          onFieldSubmitted: (_) => _login(asGuest: false),
+                          onFieldSubmitted: (_) => _submit(asGuest: false),
                           decoration: const InputDecoration(
                             labelText: 'CONTRASEÑA',
                           ),
-                          validator: (value) {
-                            return (value?.length ?? 0) >= 6
-                                ? null
-                                : 'Mínimo 6 caracteres.';
-                          },
+                          validator: (value) => (value?.length ?? 0) >= 6
+                              ? null
+                              : 'Mínimo 6 caracteres.',
                         ),
                         if (_error != null) ...[
                           const SizedBox(height: 14),
@@ -141,23 +183,43 @@ class _LoginScreenState extends State<LoginScreen> {
                         TerminalButton(
                           label: _isLoading
                               ? 'CONECTANDO...'
+                              : _isRegistering
+                              ? 'CREAR CUENTA'
                               : 'INICIAR SESIÓN',
                           onPressed: _isLoading
                               ? null
-                              : () => _login(asGuest: false),
+                              : () => _submit(asGuest: false),
                         ),
-                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () => setState(() {
+                                  _isRegistering = !_isRegistering;
+                                  _error = null;
+                                }),
+                          child: Text(
+                            _isRegistering
+                                ? 'YA TENGO UNA CUENTA // INICIAR SESIÓN'
+                                : 'CREAR CUENTA DE FAN',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontFamily: 'monospace',
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
                         TerminalButton(
                           label: 'ENTRAR COMO INVITADO',
                           icon: Icons.login,
                           isPrimary: false,
                           onPressed: _isLoading
                               ? null
-                              : () => _login(asGuest: true),
+                              : () => _submit(asGuest: true),
                         ),
                         const SizedBox(height: 24),
                         Text(
-                          '© ${widget.dataService.bandInfo.year} ${widget.dataService.bandInfo.name} - ${widget.dataService.bandInfo.label}',
+                          '© ${widget.bandInfo.year} ${widget.bandInfo.name} - ${widget.bandInfo.label}',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Colors.white54,
