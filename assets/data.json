@@ -1,0 +1,127 @@
+{
+  "band_info": {
+    "name": "DEATHFISH",
+    "label": "LA PECERA RECORDS",
+    "year": 2026,
+    "background_asset": "assets/fondo1.JPG",
+    "emailjs": {
+      "service_id": "service_4oal3lr",
+      "template_id": "template_ehko4ye",
+      "public_key": "Cj-ZKhXqXwh2T1wMK"
+    }
+  },
+  "feed": [
+    {
+      "id": "post_01",
+      "fecha": "2026-10-24",
+      "titulo": "HELL-YEAH-WEEN // ESTA ES LA NOCHE TOUR",
+      "ubicacion": "Bar La Trova, Colima",
+      "descripcion": "Transmisión en vivo junto a Leones de Áttico. Registro en curso.",
+      "tag": "EVENTO"
+    },
+    {
+      "id": "post_02",
+      "fecha": "2026-11-15",
+      "titulo": "SESIONES DE GRABACIÓN: DEATHFISH 1",
+      "ubicacion": "La Pecera Records",
+      "descripcion": "Grabando los 10 tracks del EP debut. Lanzamiento de sencillos en camino.",
+      "tag": "ESTUDIO"
+    }
+  ],
+  "tracks": [
+    {
+      "id": "trk_01",
+      "numero": "01",
+      "titulo": "wow&flutter",
+      "album": "Deathfish 1",
+      "duracion": "03:18",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: wow&flutter]\n\n(Aquí va la letra oficial de wow&flutter...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_02",
+      "numero": "02",
+      "titulo": "Hostkeep (Garder l'hôte)",
+      "album": "Deathfish 1",
+      "duracion": "03:45",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: Hostkeep]\n\n(Aquí va la letra oficial de Hostkeep...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_03",
+      "numero": "03",
+      "titulo": "euler",
+      "album": "Deathfish 1",
+      "duracion": "02:54",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: euler]\n\n(Aquí va la letra oficial de euler...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_04",
+      "numero": "04",
+      "titulo": "Tiburon",
+      "album": "Deathfish 1",
+      "duracion": "03:10",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: Tiburon]\n\n(Aquí va la letra oficial de Tiburon...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_05",
+      "numero": "05",
+      "titulo": "casita de papel",
+      "album": "Deathfish 1",
+      "duracion": "03:32",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: casita de papel]\n\n(Aquí va la letra oficial de casita de papel...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_06",
+      "numero": "06",
+      "titulo": "Poema",
+      "album": "Deathfish 1",
+      "duracion": "04:01",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: Poema]\n\n(Aquí va la letra oficial de Poema...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_07",
+      "numero": "07",
+      "titulo": "Menina",
+      "album": "Deathfish 1",
+      "duracion": "03:15",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: Menina]\n\n(Aquí va la letra oficial de Menina...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    },
+    {
+      "id": "trk_08",
+      "numero": "08",
+      "titulo": "Cóctel",
+      "album": "Deathfish 1",
+      "duracion": "02:59",
+      "letras": "[INICIANDO ARCHIVO DE TEXTO: Cóctel]\n\n(Aquí va la letra oficial de Cóctel...)\n\n[FIN DE TRANSMISIÓN]",
+      "youtube_url": "https://www.youtube.com/@deathfishband"
+    }
+  ],
+  "merch": [
+    {
+      "id": "mrc_01",
+      "nombre": "PLAYERA TERMINAL DEATHFISH // ED. 01",
+      "categoria": "ROPA",
+      "precio": 300.0,
+      "tallas": ["S", "M", "L", "XL"],
+      "stock": 12,
+      "imagen": "assets/fondo1.JPG",
+      "descripcion": "Algodón pesado negro con serigrafía rojo terminal en pecho y espalda."
+    },
+    {
+      "id": "mrc_02",
+      "nombre": "PACK STICKERS + PÚA LA PECERA",
+      "categoria": "ACCESORIOS",
+      "precio": 80.0,
+      "tallas": ["ÚNICA"],
+      "stock": 25,
+      "imagen": "assets/fondo1.JPG",
+      "descripcion": "Calcomanías resistentes al agua + plumilla personalizada 0.73mm."
+    }
+  ]
+}
