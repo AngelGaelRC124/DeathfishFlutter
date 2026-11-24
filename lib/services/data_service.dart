@@ -148,6 +148,12 @@ class DataService {
       subject: subject,
       message: message,
     );
+    final recipientEmail = bandInfo.emailJs.recipientEmail.trim();
+    if (recipientEmail.isEmpty) {
+      throw StateError(
+        'El mensaje quedó guardado en Firestore, pero falta configurar el destinatario de EmailJS en assets/data.json (emailjs.recipient_email).',
+      );
+    }
     final response = await http
         .post(
           Uri.parse('https://api.emailjs.com/api/v1.0/email/send'),
@@ -157,7 +163,9 @@ class DataService {
             'template_id': bandInfo.emailJs.templateId,
             'user_id': bandInfo.emailJs.publicKey,
             'template_params': {
+              'to_email': recipientEmail,
               'from_name': name,
+              'from_email': email,
               'reply_to': email,
               'subject': subject,
               'message': message,

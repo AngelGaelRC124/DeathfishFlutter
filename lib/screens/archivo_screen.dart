@@ -5,6 +5,7 @@ import '../models/user_session.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
+import '../widgets/audio_track_button.dart';
 import '../widgets/terminal_widgets.dart';
 
 class ArchivoScreen extends StatefulWidget {
@@ -38,125 +39,222 @@ class _ArchivoScreenState extends State<ArchivoScreen> {
   }
 
   Future<void> _openLyrics(Track track) async {
+    var showingArt = false;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.black,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-      builder: (sheetContext) => StreamBuilder<Set<String>>(
-        stream: _favorites,
-        builder: (context, favoriteSnapshot) {
-          final favorites = favoriteSnapshot.data ?? const <String>{};
-          final isFavorite = favorites.contains(track.id);
-          return SafeArea(
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height * 0.82,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'ARCHIVO // ${track.number}',
-                            style: const TextStyle(
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => StreamBuilder<Set<String>>(
+          stream: _favorites,
+          builder: (context, favoriteSnapshot) {
+            final favorites = favoriteSnapshot.data ?? const <String>{};
+            final isFavorite = favorites.contains(track.id);
+            final hasAudio =
+                track.audioUrl != null || track.audioMediaId != null;
+            final restricted = track.soloFans && widget.session.isGuest;
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height * 0.82,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'ARCHIVO // ${track.number}',
+                              style: const TextStyle(
+                                color: TerminalTheme.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: widget.session.isGuest
+                                ? 'Inicia sesión para guardar favoritos'
+                                : isFavorite
+                                ? 'Quitar de favoritos'
+                                : 'Guardar en favoritos',
+                            onPressed: widget.session.isGuest
+                                ? null
+                                : () async {
+                                    try {
+                                      await widget.firestoreService.setFavorite(
+                                        widget.session.uid,
+                                        track.id,
+                                        !isFavorite,
+                                      );
+                                    } catch (error) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'NO SE PUDO GUARDAR FAVORITO: $error',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            icon: Icon(
+                              isFavorite
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
                               color: TerminalTheme.red,
-                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        track.title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${track.album} // ${track.duration}',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 11,
+                        ),
+                      ),
+                      if (hasAudio)
+                        Row(
+                          children: [
+                            AudioTrackButton(
+                              track: track,
+                              dataService: widget.dataService,
+                              session: widget.session,
+                            ),
+                            const Text(
+                              'REPRODUCIR AUDIO',
+                              style: TextStyle(
+                                color: TerminalTheme.red,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      if (restricted)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 5),
+                          child: Text(
+                            '[ ACCESO RESTRINGIDO // INICIA SESIÓN COMO FAN ]',
+                            style: TextStyle(
+                              color: TerminalTheme.red,
+                              fontSize: 10,
                             ),
                           ),
                         ),
-                        IconButton(
-                          tooltip: widget.session.isGuest
-                              ? 'Inicia sesión para guardar favoritos'
-                              : isFavorite
-                              ? 'Quitar de favoritos'
-                              : 'Guardar en favoritos',
-                          onPressed: widget.session.isGuest
-                              ? null
-                              : () async {
-                                  try {
-                                    await widget.firestoreService.setFavorite(
-                                      widget.session.uid,
-                                      track.id,
-                                      !isFavorite,
-                                    );
-                                  } catch (error) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'NO SE PUDO GUARDAR FAVORITO: $error',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                          icon: Icon(
-                            isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: TerminalTheme.red,
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _DetailTab(
+                              label: '[ LETRAS ]',
+                              selected: !showingArt,
+                              onTap: () => setSheetState(
+                                () => showingArt = false,
+                              ),
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(sheetContext),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      track.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _DetailTab(
+                              label: '[ ARTE / ZINE ]',
+                              selected: showingArt,
+                              onTap: () => setSheetState(
+                                () => showingArt = true,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    Text(
-                      '${track.album} // ${track.duration}',
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 11,
-                      ),
-                    ),
-                    const Divider(height: 28),
-                    Expanded(
-                      child: SingleChildScrollView(
+                      const SizedBox(height: 8),
+                      Expanded(
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: Colors.black,
                             border: Border.all(
                               color: TerminalTheme.red.withValues(alpha: 0.3),
+                              width: 1,
                             ),
                           ),
-                          child: SelectableText(
-                            track.lyrics,
-                            style: const TextStyle(height: 1.8),
-                          ),
+                          child: showingArt
+                              ? track.artUrl == null
+                                  ? const Center(
+                                      child: Text(
+                                        'NO HAY ARTE DISPONIBLE.',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    )
+                                  : Image.network(
+                                      track.artUrl!,
+                                      fit: BoxFit.contain,
+                                      loadingBuilder:
+                                          (context, child, progress) =>
+                                              progress == null
+                                              ? child
+                                              : const Center(
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        color:
+                                                            TerminalTheme.red,
+                                                      ),
+                                                ),
+                                      errorBuilder: (context, error, stack) =>
+                                          const Center(
+                                            child: Text(
+                                              'ERROR AL CARGAR EL ARTE.',
+                                              style: TextStyle(
+                                                color: TerminalTheme.red,
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                          ),
+                                    )
+                              : SingleChildScrollView(
+                                  child: SelectableText(
+                                    track.lyrics,
+                                    style: const TextStyle(height: 1.8),
+                                  ),
+                                ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      widget.session.isGuest
-                          ? 'INICIA SESIÓN PARA SINCRONIZAR FAVORITOS'
-                          : 'FAVORITOS SINCRONIZADOS CON TU CUENTA',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 9,
+                      const SizedBox(height: 10),
+                      Text(
+                        widget.session.isGuest
+                            ? 'INICIA SESIÓN PARA SINCRONIZAR FAVORITOS'
+                            : 'FAVORITOS SINCRONIZADOS CON TU CUENTA',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 9,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -305,4 +403,29 @@ class _TrackRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DetailTab extends StatelessWidget {
+  const _DetailTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+    onPressed: onTap,
+    style: OutlinedButton.styleFrom(
+      foregroundColor: selected ? Colors.black : TerminalTheme.red,
+      backgroundColor: selected ? TerminalTheme.red : Colors.black,
+      side: const BorderSide(color: TerminalTheme.red, width: 1),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+    ),
+    child: Text(label, style: const TextStyle(fontSize: 10)),
+  );
 }

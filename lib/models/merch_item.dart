@@ -10,6 +10,7 @@ class MerchItem {
     required this.description,
     this.imageMediaId,
     this.imageName,
+    this.imageUrl,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class MerchItem {
   final String description;
   final String? imageMediaId;
   final String? imageName;
+  final String? imageUrl;
 
   factory MerchItem.fromJson(Map<String, dynamic> json) {
     return MerchItem(
@@ -37,6 +39,7 @@ class MerchItem {
       description: json['descripcion'] as String,
       imageMediaId: json['image_media_id'] as String?,
       imageName: json['image_name'] as String?,
+      imageUrl: json['image_url'] as String?,
     );
   }
 
@@ -51,5 +54,6 @@ class MerchItem {
     'descripcion': description,
     'image_media_id': imageMediaId,
     'image_name': imageName,
+    'image_url': imageUrl,
   };
 }

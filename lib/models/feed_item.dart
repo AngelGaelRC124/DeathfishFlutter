@@ -6,6 +6,7 @@ class FeedItem {
     required this.location,
     required this.description,
     required this.tag,
+    this.attendeeIds = const [],
   });
 
   final String id;
@@ -14,6 +15,7 @@ class FeedItem {
   final String location;
   final String description;
   final String tag;
+  final List<String> attendeeIds;
 
   factory FeedItem.fromJson(Map<String, dynamic> json) {
     return FeedItem(
@@ -23,6 +25,9 @@ class FeedItem {
       location: json['ubicacion'] as String,
       description: json['descripcion'] as String,
       tag: json['tag'] as String,
+      attendeeIds: List<String>.unmodifiable(
+        (json['asistentes'] as List<dynamic>? ?? const []).cast<String>(),
+      ),
     );
   }
 
@@ -33,5 +38,6 @@ class FeedItem {
     'ubicacion': location,
     'descripcion': description,
     'tag': tag,
+    'asistentes': attendeeIds,
   };
 }

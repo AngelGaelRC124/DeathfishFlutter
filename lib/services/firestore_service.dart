@@ -17,6 +17,7 @@ abstract interface class FirestoreGateway {
 
   Future<void> saveFeedItem(FeedItem item);
   Future<void> deleteFeedItem(String id);
+  Future<void> setEventAttendance(String eventId, String uid, bool isAttending);
   Future<void> saveTrack(Track track);
   Future<void> deleteTrack(String id);
   Future<void> saveMerchItem(MerchItem item);
@@ -103,6 +104,21 @@ class FirestoreService implements FirestoreGateway {
 
   @override
   Future<void> deleteFeedItem(String id) => _feed.doc(id).delete();
+
+  @override
+  Future<void> setEventAttendance(
+    String eventId,
+    String uid,
+    bool isAttending,
+  ) async {
+    _requireId(eventId);
+    _requireId(uid);
+    await _feed.doc(eventId).update({
+      'asistentes': isAttending
+          ? FieldValue.arrayUnion([uid])
+          : FieldValue.arrayRemove([uid]),
+    });
+  }
 
   @override
   Future<void> saveTrack(Track track) async {

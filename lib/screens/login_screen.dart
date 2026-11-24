@@ -45,7 +45,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       if (asGuest) {
-        await widget.authService.signInAsGuest();
+        final session = await widget.authService.signInAsGuest();
+        if (!session.isGuest) {
+          throw StateError('El acceso invitado debe ser de solo lectura.');
+        }
       } else if (_isRegistering) {
         await widget.authService.register(
           _nameController.text,

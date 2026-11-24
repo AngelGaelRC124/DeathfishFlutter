@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/feed_item.dart';
+import '../models/user_session.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
@@ -10,10 +12,12 @@ class InicioScreen extends StatelessWidget {
     super.key,
     required this.dataService,
     required this.firestoreService,
+    required this.session,
   });
 
   final DataService dataService;
   final FirestoreGateway firestoreService;
+  final UserSession session;
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +109,7 @@ class InicioScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        StreamBuilder(
+        StreamBuilder<List<FeedItem>>(
           stream: firestoreService.watchFeed(),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
@@ -179,6 +183,12 @@ class InicioScreen extends StatelessWidget {
                             fontSize: 11,
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        _AttendanceButton(
+                          item: item,
+                          session: session,
+                          firestoreService: firestoreService,
+                        ),
                       ],
                     ),
                   ),
@@ -189,6 +199,75 @@ class InicioScreen extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _AttendanceButton extends StatelessWidget {
+  const _AttendanceButton({
+    required this.item,
+    required this.session,
+    required this.firestoreService,
+  });
+
+  final FeedItem item;
+  final UserSession session;
+  final FirestoreGateway firestoreService;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAttending = item.attendeeIds.contains(session.uid);
+    final count = item.attendeeIds.length;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: () async {
+          if (session.isGuest) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'INICIA SESIÓN COMO FAN PARA CONFIRMAR ASISTENCIA.',
+                ),
+                backgroundColor: TerminalTheme.red,
+              ),
+            );
+            return;
+          }
+          try {
+            await firestoreService.setEventAttendance(
+              item.id,
+              session.uid,
+              !isAttending,
+            );
+          } catch (error) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('NO SE PUDO ACTUALIZAR LA ASISTENCIA: $error'),
+                  backgroundColor: TerminalTheme.red,
+                ),
+              );
+            }
+          }
+        },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: isAttending ? Colors.white : TerminalTheme.red,
+          backgroundColor: isAttending ? TerminalTheme.red : Colors.black,
+          side: const BorderSide(color: TerminalTheme.red, width: 1),
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+        ),
+        child: Text(
+          isAttending
+              ? '[ ASISTENCIA CONFIRMADA ✓ ($count) ]'
+              : '[ ASISTIRÉ ($count) ]',
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,13 +1,15 @@
 import 'dart:async';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/track.dart';
+import '../models/user_session.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
+import '../widgets/audio_track_button.dart';
 import '../widgets/terminal_widgets.dart';
 
 class StreamScreen extends StatelessWidget {
@@ -15,10 +17,12 @@ class StreamScreen extends StatelessWidget {
     super.key,
     required this.dataService,
     required this.firestoreService,
+    required this.session,
   });
 
   final DataService dataService;
   final FirestoreGateway firestoreService;
+  final UserSession session;
 
   Future<void> _launchVideo(BuildContext context, Track track) async {
     try {
@@ -141,8 +145,10 @@ class StreamScreen extends StatelessWidget {
             const SizedBox(height: 10),
             for (final track in tracks) ...[
               _ReleaseCard(
+                key: ValueKey('${track.id}:${track.videoUrl}'),
                 track: track,
                 dataService: dataService,
+                session: session,
                 onPlay: () => _launchVideo(context, track),
               ),
               const SizedBox(height: 10),
@@ -156,13 +162,16 @@ class StreamScreen extends StatelessWidget {
 
 class _ReleaseCard extends StatelessWidget {
   const _ReleaseCard({
+    super.key,
     required this.track,
     required this.dataService,
+    required this.session,
     required this.onPlay,
   });
 
   final Track track;
   final DataService dataService;
+  final UserSession session;
   final VoidCallback onPlay;
 
   @override
@@ -216,7 +225,11 @@ class _ReleaseCard extends StatelessWidget {
               ),
             ],
           ),
-          if (track.audioMediaId != null) ...[
+          if (track.videoUrl != null) ...[
+            const Divider(height: 18),
+            _InlineVideoPlayer(url: track.videoUrl!, name: track.videoName),
+          ],
+          if (track.audioMediaId != null || track.audioUrl != null) ...[
             const Divider(height: 18),
             Row(
               children: [
@@ -228,13 +241,17 @@ class _ReleaseCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    track.audioName ?? 'AUDIO LOCAL',
+                    track.audioName ?? 'AUDIO',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.white70, fontSize: 10),
                   ),
                 ),
-                _AudioPlaybackButton(dataService: dataService, track: track),
+                AudioTrackButton(
+                  dataService: dataService,
+                  session: session,
+                  track: track,
+                ),
               ],
             ),
           ],
@@ -244,90 +261,118 @@ class _ReleaseCard extends StatelessWidget {
   }
 }
 
-class _AudioPlaybackButton extends StatefulWidget {
-  const _AudioPlaybackButton({required this.dataService, required this.track});
+class _InlineVideoPlayer extends StatefulWidget {
+  const _InlineVideoPlayer({required this.url, this.name});
 
-  final DataService dataService;
-  final Track track;
+  final String url;
+  final String? name;
 
   @override
-  State<_AudioPlaybackButton> createState() => _AudioPlaybackButtonState();
+  State<_InlineVideoPlayer> createState() => _InlineVideoPlayerState();
 }
 
-class _AudioPlaybackButtonState extends State<_AudioPlaybackButton> {
-  final AudioPlayer _player = AudioPlayer();
-  StreamSubscription<PlayerState>? _stateSubscription;
-  PlayerState _playerState = PlayerState.stopped;
-  bool _isLoading = false;
+class _InlineVideoPlayerState extends State<_InlineVideoPlayer> {
+  late final VideoPlayerController _controller;
+  late final Future<void> _initialization;
 
   @override
   void initState() {
     super.initState();
-    _stateSubscription = _player.onPlayerStateChanged.listen((state) {
-      if (mounted) setState(() => _playerState = state);
-    });
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _initialization = _controller.initialize();
+    _controller.addListener(_onVideoChanged);
   }
 
   @override
   void dispose() {
-    unawaited(_stateSubscription?.cancel());
-    unawaited(_player.dispose());
+    _controller.removeListener(_onVideoChanged);
+    unawaited(_controller.dispose());
     super.dispose();
   }
 
-  Future<void> _togglePlayback() async {
-    setState(() => _isLoading = true);
-    try {
-      if (_playerState == PlayerState.playing) {
-        await _player.pause();
-      } else if (_playerState == PlayerState.paused) {
-        await _player.resume();
-      } else {
-        final mediaId = widget.track.audioMediaId;
-        if (mediaId == null) {
-          throw StateError('Esta canción no tiene audio adjunto.');
-        }
-        final bytes = await widget.dataService.readMedia(mediaId);
-        if (bytes == null) {
-          throw StateError('No se encontró el archivo de audio guardado.');
-        }
-        await _player.play(
-          BytesSource(bytes, mimeType: widget.track.audioMimeType),
-        );
-      }
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('NO SE PUDO REPRODUCIR EL AUDIO: $error')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  void _onVideoChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: _playerState == PlayerState.playing
-          ? 'Pausar audio'
-          : 'Reproducir audio',
-      onPressed: _isLoading ? null : _togglePlayback,
-      icon: _isLoading
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: TerminalTheme.red,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black,
+        border: Border.all(color: TerminalTheme.red.withValues(alpha: 0.4)),
+      ),
+      child: FutureBuilder<void>(
+        future: _initialization,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                'ERROR AL CARGAR VIDEO: ${snapshot.error}',
+                style: const TextStyle(color: TerminalTheme.red, fontSize: 10),
               ),
-            )
-          : Icon(
-              _playerState == PlayerState.playing
-                  ? Icons.pause
-                  : Icons.play_arrow,
-              color: TerminalTheme.red,
-            ),
+            );
+          }
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const SizedBox(
+              height: 180,
+              child: Center(
+                child: CircularProgressIndicator(color: TerminalTheme.red),
+              ),
+            );
+          }
+          final aspectRatio = _controller.value.aspectRatio;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.name != null)
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    widget.name!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ),
+              AspectRatio(
+                aspectRatio: aspectRatio > 0 ? aspectRatio : 16 / 9,
+                child: VideoPlayer(_controller),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: _controller.value.isPlaying
+                        ? 'Pausar video'
+                        : 'Reproducir video',
+                    onPressed: () => _controller.value.isPlaying
+                        ? _controller.pause()
+                        : _controller.play(),
+                    icon: Icon(
+                      _controller.value.isPlaying
+                          ? Icons.pause
+                          : Icons.play_arrow,
+                      color: TerminalTheme.red,
+                    ),
+                  ),
+                  Expanded(
+                    child: VideoProgressIndicator(
+                      _controller,
+                      allowScrubbing: true,
+                      colors: const VideoProgressColors(
+                        playedColor: TerminalTheme.red,
+                        bufferedColor: Colors.white38,
+                        backgroundColor: Colors.white12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

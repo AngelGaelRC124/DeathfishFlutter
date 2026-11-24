@@ -3,12 +3,14 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../models/contact_message.dart';
 import '../models/feed_item.dart';
 import '../models/merch_item.dart';
 import '../models/track.dart';
 import '../models/user_session.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
+import '../services/storage_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
 
@@ -31,6 +33,7 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   DataService get data => widget.dataService;
   FirestoreGateway get firestore => widget.firestoreService;
+  final StorageService _storageService = StorageService();
 
   void _reportError(Object error) {
     if (!mounted) return;
@@ -45,82 +48,136 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<bool?> _showEditor(
     String title,
     GlobalKey<FormState> formKey,
-    List<Widget> fields,
-  ) async {
+    List<Widget> fields, {
+    Future<void> Function()? onSave,
+  }) async {
     final navigator = Navigator.of(context, rootNavigator: true);
+    var isSaving = false;
     final route = DialogRoute<bool>(
       context: context,
       themes: InheritedTheme.capture(from: context, to: navigator.context),
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(18),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 480,
-            maxHeight: MediaQuery.of(dialogContext).size.height * 0.88,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              border: Border.all(
-                color: TerminalTheme.red.withValues(alpha: 0.5),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => PopScope(
+          canPop: !isSaving,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(18),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 480,
+                maxHeight: MediaQuery.of(dialogContext).size.height * 0.88,
               ),
-              borderRadius: BorderRadius.zero,
-            ),
-            child: Form(
-              key: formKey,
-              child: Column(
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: TerminalTheme.red,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(
+                    color: TerminalTheme.red.withValues(alpha: 0.5),
                   ),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          for (var index = 0; index < fields.length; index++)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: fields[index],
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Row(
+                  borderRadius: BorderRadius.zero,
+                ),
+                child: Form(
+                  key: formKey,
+                  child: Column(
                     children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: TerminalTheme.red,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
                       Expanded(
-                        child: TextButton(
-                          onPressed: () => Navigator.pop(dialogContext, false),
-                          child: const Text(
-                            'CANCELAR',
-                            style: TextStyle(color: Colors.white70),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              for (
+                                var index = 0;
+                                index < fields.length;
+                                index++
+                              )
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: fields[index],
+                                ),
+                            ],
                           ),
                         ),
                       ),
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () {
-                            if (formKey.currentState!.validate()) {
-                              Navigator.pop(dialogContext, true);
-                            }
-                          },
-                          child: const Text(
-                            'GUARDAR',
-                            style: TextStyle(color: TerminalTheme.red),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: isSaving
+                                  ? null
+                                  : () => Navigator.pop(dialogContext, false),
+                              child: const Text(
+                                'CANCELAR',
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                            ),
                           ),
-                        ),
+                          Expanded(
+                            child: TextButton(
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      if (!formKey.currentState!.validate()) {
+                                        return;
+                                      }
+                                      if (onSave == null) {
+                                        Navigator.pop(dialogContext, true);
+                                        return;
+                                      }
+                                      setDialogState(() => isSaving = true);
+                                      try {
+                                        await onSave();
+                                        if (dialogContext.mounted) {
+                                          Navigator.pop(dialogContext, true);
+                                        }
+                                      } catch (error) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context)
+                                            ..hideCurrentSnackBar()
+                                            ..showSnackBar(
+                                              SnackBar(
+                                                content: Text(error.toString()),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                        }
+                                      } finally {
+                                        if (dialogContext.mounted) {
+                                          setDialogState(
+                                            () => isSaving = false,
+                                          );
+                                        }
+                                      }
+                                    },
+                              child: isSaving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: TerminalTheme.red,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'GUARDAR',
+                                      style: TextStyle(
+                                        color: TerminalTheme.red,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -151,9 +208,6 @@ class _AdminScreenState extends State<AdminScreen> {
               : 'Este campo es obligatorio.',
     );
   }
-
-  String _newMediaId(String prefix) =>
-      '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
 
   Future<void> _removeStoredMedia(String? mediaId) async {
     if (mediaId == null) return;
@@ -200,6 +254,7 @@ class _AdminScreenState extends State<AdminScreen> {
             location: location.text.trim(),
             description: description.text.trim(),
             tag: tag.text.trim(),
+            attendeeIds: item?.attendeeIds ?? const [],
           ),
         );
         setState(() {});
@@ -223,7 +278,15 @@ class _AdminScreenState extends State<AdminScreen> {
     final url = TextEditingController(text: track?.youtubeUrl ?? '');
     final lyrics = TextEditingController(text: track?.lyrics ?? '');
     _PickedMedia? selectedAudio;
+    _PickedMedia? selectedVideo;
+    _PickedMedia? selectedArt;
     var removeAudio = false;
+    var removeVideo = false;
+    var removeArt = false;
+    final soloFans = ValueNotifier<bool>(track?.soloFans ?? false);
+    String? uploadedAudioUrl;
+    String? uploadedVideoUrl;
+    String? uploadedArtUrl;
     final saved = await _showEditor(
       track == null ? '> NUEVA CANCIÓN / VIDEO' : '> EDITAR CANCIÓN / VIDEO',
       formKey,
@@ -240,7 +303,11 @@ class _AdminScreenState extends State<AdminScreen> {
             final enteredUrl = value?.trim() ?? '';
             if (enteredUrl.isEmpty &&
                 (selectedAudio != null ||
-                    (!removeAudio && track?.audioMediaId != null))) {
+                    selectedVideo != null ||
+                    (!removeAudio &&
+                        (track?.audioMediaId != null ||
+                            track?.audioUrl != null)) ||
+                    (!removeVideo && track?.videoUrl != null))) {
               return null;
             }
             final uri = Uri.tryParse(enteredUrl);
@@ -256,32 +323,98 @@ class _AdminScreenState extends State<AdminScreen> {
           title: 'ARCHIVO DE AUDIO (MP3 / WAV)',
           type: FileType.custom,
           allowedExtensions: const ['mp3', 'wav'],
-          initialName: track?.audioName,
+          initialName:
+              track?.audioName ??
+              (track?.audioUrl == null ? null : 'AUDIO REMOTO'),
           onPicked: (file) {
             selectedAudio = file;
+            uploadedAudioUrl = null;
             removeAudio = false;
           },
-          onRemove: track?.audioMediaId == null
+          onRemove: track?.audioMediaId == null && track?.audioUrl == null
               ? null
               : () {
                   selectedAudio = null;
                   removeAudio = true;
                 },
         ),
+        _AdminMediaPicker(
+          title: 'VIDEO MP4',
+          type: FileType.custom,
+          allowedExtensions: const ['mp4'],
+          initialName:
+              track?.videoName ??
+              (track?.videoUrl == null ? null : 'VIDEO REMOTO'),
+          onPicked: (file) {
+            selectedVideo = file;
+            uploadedVideoUrl = null;
+            removeVideo = false;
+          },
+          onRemove: track?.videoUrl == null
+              ? null
+              : () {
+                  selectedVideo = null;
+                  removeVideo = true;
+                },
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: soloFans,
+          builder: (context, value, _) => SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'SOLO FANS REGISTRADOS',
+              style: TextStyle(color: Colors.white, fontSize: 11),
+            ),
+            subtitle: const Text(
+              'Restringe la reproducción a cuentas fan.',
+              style: TextStyle(color: Colors.white54, fontSize: 9),
+            ),
+            value: value,
+            activeTrackColor: TerminalTheme.red,
+            onChanged: (enabled) => soloFans.value = enabled,
+          ),
+        ),
+        _AdminMediaPicker(
+          title: 'ARTE CONCEPTUAL / ZINE',
+          type: FileType.image,
+          initialName: track?.artUrl == null ? null : 'ARTE REMOTO',
+          onPicked: (file) {
+            selectedArt = file;
+            uploadedArtUrl = null;
+            removeArt = false;
+          },
+          onRemove: track?.artUrl == null
+              ? null
+              : () {
+                  selectedArt = null;
+                  removeArt = true;
+                },
+        ),
       ],
-    );
-    if (saved == true && mounted) {
-      String? newAudioMediaId;
-      try {
+      onSave: () async {
+        final trackId =
+            track?.id ?? 'trk_${DateTime.now().microsecondsSinceEpoch}';
         if (selectedAudio != null) {
-          newAudioMediaId = _newMediaId('audio');
-          await data.saveMedia(newAudioMediaId, selectedAudio!.bytes);
+          uploadedAudioUrl ??= await _storageService.pickAndUploadFile(
+            folder: 'tracks/$trackId/audio',
+            fileName: selectedAudio!.name,
+            bytes: selectedAudio!.bytes,
+          );
         }
-        final audioMediaId = selectedAudio != null
-            ? newAudioMediaId
-            : removeAudio
-            ? null
-            : track?.audioMediaId;
+        if (selectedVideo != null) {
+          uploadedVideoUrl ??= await _storageService.pickAndUploadFile(
+            folder: 'tracks/$trackId/video',
+            fileName: selectedVideo!.name,
+            bytes: selectedVideo!.bytes,
+          );
+        }
+        if (selectedArt != null) {
+          uploadedArtUrl ??= await _storageService.pickAndUploadFile(
+            folder: 'tracks/$trackId/art',
+            fileName: selectedArt!.name,
+            bytes: selectedArt!.bytes,
+          );
+        }
         final audioName =
             selectedAudio?.name ?? (removeAudio ? null : track?.audioName);
         final audioMimeType = selectedAudio != null
@@ -289,35 +422,54 @@ class _AdminScreenState extends State<AdminScreen> {
             : removeAudio
             ? null
             : track?.audioMimeType;
+        final videoName =
+            selectedVideo?.name ?? (removeVideo ? null : track?.videoName);
         await firestore.saveTrack(
           Track(
-            id: track?.id ?? 'trk_${DateTime.now().microsecondsSinceEpoch}',
+            id: trackId,
             number: number.text.trim(),
             title: title.text.trim(),
             album: album.text.trim(),
             duration: duration.text.trim(),
             lyrics: lyrics.text.trim(),
             youtubeUrl: url.text.trim(),
-            audioMediaId: audioMediaId,
+            audioMediaId: selectedAudio != null || removeAudio
+                ? null
+                : track?.audioMediaId,
             audioName: audioName,
             audioMimeType: audioMimeType,
+            audioUrl: selectedAudio != null
+                ? uploadedAudioUrl
+                : removeAudio
+                ? null
+                : track?.audioUrl,
+            videoUrl: selectedVideo != null
+                ? uploadedVideoUrl
+                : removeVideo
+                ? null
+                : track?.videoUrl,
+            videoName: videoName,
+            soloFans: soloFans.value,
+            artUrl: selectedArt != null
+                ? uploadedArtUrl
+                : removeArt
+                ? null
+                : track?.artUrl,
           ),
         );
-        setState(() {});
-        if (track?.audioMediaId != audioMediaId) {
+        if (selectedAudio != null || removeAudio) {
           await _removeStoredMedia(track?.audioMediaId);
         }
-      } catch (error) {
-        await _removeStoredMedia(newAudioMediaId);
-        _reportError(error);
-      }
-    }
+      },
+    );
+    if (saved == true && mounted) setState(() {});
     number.dispose();
     title.dispose();
     album.dispose();
     duration.dispose();
     url.dispose();
     lyrics.dispose();
+    soloFans.dispose();
   }
 
   Future<void> _editMerch([MerchItem? item]) async {
@@ -365,7 +517,9 @@ class _AdminScreenState extends State<AdminScreen> {
         _AdminMediaPicker(
           title: 'IMAGEN DEL PRODUCTO',
           type: FileType.image,
-          initialName: item?.imageName,
+          initialName:
+              item?.imageName ??
+              (item?.imageUrl == null ? null : 'IMAGEN REMOTA'),
           requiredForNewItem: item == null,
           onPicked: (file) => selectedImage = file,
         ),
@@ -373,7 +527,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ],
     );
     if (saved == true && mounted) {
-      String? newImageMediaId;
       try {
         final parsedSizes = sizes.text
             .split(',')
@@ -381,14 +534,18 @@ class _AdminScreenState extends State<AdminScreen> {
             .where((size) => size.isNotEmpty)
             .toSet()
             .toList();
-        if (selectedImage != null) {
-          newImageMediaId = _newMediaId('image');
-          await data.saveMedia(newImageMediaId, selectedImage!.bytes);
-        }
-        final imageMediaId = newImageMediaId ?? item?.imageMediaId;
+        final itemId =
+            item?.id ?? 'mrc_${DateTime.now().microsecondsSinceEpoch}';
+        final imageUrl = selectedImage == null
+            ? item?.imageUrl
+            : await _storageService.pickAndUploadFile(
+                folder: 'merch/$itemId/images',
+                fileName: selectedImage!.name,
+                bytes: selectedImage!.bytes,
+              );
         await firestore.saveMerchItem(
           MerchItem(
-            id: item?.id ?? 'mrc_${DateTime.now().microsecondsSinceEpoch}',
+            id: itemId,
             name: name.text.trim(),
             category: category.text.trim(),
             price: double.parse(price.text.trim()),
@@ -396,16 +553,13 @@ class _AdminScreenState extends State<AdminScreen> {
             stock: int.parse(stock.text.trim()),
             image: item?.image ?? selectedImage?.name ?? '',
             description: description.text.trim(),
-            imageMediaId: imageMediaId,
+            imageMediaId: selectedImage == null ? item?.imageMediaId : null,
             imageName: selectedImage?.name ?? item?.imageName,
+            imageUrl: imageUrl,
           ),
         );
         setState(() {});
-        if (item?.imageMediaId != imageMediaId) {
-          await _removeStoredMedia(item?.imageMediaId);
-        }
       } catch (error) {
-        await _removeStoredMedia(newImageMediaId);
         _reportError(error);
       }
     }
@@ -462,6 +616,127 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Widget _messageInbox() => StreamBuilder<List<ContactMessage>>(
+    stream: firestore.watchMessages(),
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return Center(
+          child: Text(
+            'ERROR AL CARGAR MENSAJES: ${snapshot.error}',
+            style: const TextStyle(color: TerminalTheme.red),
+            textAlign: TextAlign.center,
+          ),
+        );
+      }
+      if (!snapshot.hasData) {
+        return const Center(
+          child: CircularProgressIndicator(color: TerminalTheme.red),
+        );
+      }
+      final messages = snapshot.data!;
+      if (messages.isEmpty) {
+        return const Center(
+          child: Text(
+            'BANDEJA DE ENTRADA VACÍA.',
+            style: TextStyle(color: Colors.white70),
+          ),
+        );
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.all(14),
+        itemCount: messages.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 10),
+        itemBuilder: (context, index) {
+          final message = messages[index];
+          return TerminalPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        message.subject,
+                        style: const TextStyle(
+                          color: TerminalTheme.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      message.status.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${message.sender} // ${message.email}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 10),
+                ),
+                if (message.createdAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    message.createdAt!.toLocal().toString(),
+                    style: const TextStyle(color: Colors.white54, fontSize: 9),
+                  ),
+                ],
+                const Divider(height: 18),
+                SelectableText(
+                  message.body,
+                  style: const TextStyle(color: Colors.white, height: 1.4),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: message.status == 'leído'
+                          ? null
+                          : () async {
+                              try {
+                                await firestore.updateMessageStatus(
+                                  message.id,
+                                  'leído',
+                                );
+                              } catch (error) {
+                                _reportError(error);
+                              }
+                            },
+                      icon: const Icon(
+                        Icons.mark_email_read_outlined,
+                        size: 17,
+                      ),
+                      label: const Text('MARCAR LEÍDO'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: TerminalTheme.red,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Eliminar mensaje',
+                      onPressed: () => _delete(
+                        'MENSAJE',
+                        message.subject,
+                        () => firestore.deleteMessage(message.id),
+                      ),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: TerminalTheme.red,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+
   Widget _streamSection<T>({
     required Stream<List<T>> stream,
     required String title,
@@ -517,10 +792,11 @@ class _AdminScreenState extends State<AdminScreen> {
       );
     }
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           const TabBar(
+            isScrollable: true,
             labelColor: TerminalTheme.red,
             unselectedLabelColor: Colors.white70,
             indicatorColor: TerminalTheme.red,
@@ -528,6 +804,7 @@ class _AdminScreenState extends State<AdminScreen> {
               Tab(text: 'TABLÓN'),
               Tab(text: 'CANCIONES / VIDEOS'),
               Tab(text: 'MERCH'),
+              Tab(text: 'BANDEJA DE ENTRADA'),
             ],
           ),
           Expanded(
@@ -579,6 +856,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   onAdd: () => _editMerch(),
                   deleteType: 'PRODUCTO',
                 ),
+                _messageInbox(),
               ],
             ),
           ),

@@ -1,11 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../models/user_session.dart';
+import '../providers/audio_provider.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
+import '../widgets/global_audio_bar.dart';
 import 'admin_screen.dart';
 import 'archivo_screen.dart';
 import 'contacto_screen.dart';
@@ -35,6 +41,81 @@ class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   bool _showAdmin = false;
 
+  Future<void> _showFanPass() async {
+    final session = widget.session;
+    final passData = jsonEncode({'uid': session.uid, 'email': session.email});
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.black,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        title: const Text(
+          '> CREDENCIAL / PASE TERMINAL',
+          style: TextStyle(
+            color: TerminalTheme.red,
+            fontSize: 13,
+            fontFamily: 'monospace',
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: TerminalTheme.red, width: 1),
+                ),
+                child: QrImageView(
+                  data: passData,
+                  version: QrVersions.auto,
+                  size: 220,
+                  backgroundColor: Colors.black,
+                  eyeStyle: const QrEyeStyle(color: Colors.white),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                (session.name?.trim().isNotEmpty ?? false)
+                    ? session.name!
+                    : session.email.split('@').first,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                session.isAdmin ? 'ROL // ADMIN' : 'ROL // FAN',
+                style: const TextStyle(color: TerminalTheme.red, fontSize: 11),
+              ),
+              const SizedBox(height: 5),
+              SelectableText(
+                session.email,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 10),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              'CERRAR',
+              style: TextStyle(color: TerminalTheme.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -50,6 +131,7 @@ class _AppShellState extends State<AppShell> {
       InicioScreen(
         dataService: data,
         firestoreService: widget.firestoreService,
+        session: widget.session,
       ),
       MerchScreen(dataService: data, firestoreService: widget.firestoreService),
       ArchivoScreen(
@@ -60,6 +142,7 @@ class _AppShellState extends State<AppShell> {
       StreamScreen(
         dataService: data,
         firestoreService: widget.firestoreService,
+        session: widget.session,
       ),
       ContactoScreen(
         dataService: data,
@@ -136,6 +219,15 @@ class _AppShellState extends State<AppShell> {
                           color: TerminalTheme.red,
                         ),
                       ),
+                    if (!widget.session.isGuest)
+                      IconButton(
+                        tooltip: 'Credencial de fan',
+                        onPressed: _showFanPass,
+                        icon: const Icon(
+                          Icons.person_outline,
+                          color: TerminalTheme.red,
+                        ),
+                      ),
                     IconButton(
                       tooltip: 'Cerrar sesión',
                       onPressed: () async {
@@ -181,47 +273,56 @@ class _AppShellState extends State<AppShell> {
           ),
         ),
       ),
-      bottomNavigationBar: _showAdmin
-          ? BottomAppBar(
-              color: Colors.black,
-              child: TextButton.icon(
-                onPressed: () => setState(() => _showAdmin = false),
-                icon: const Icon(Icons.arrow_back, color: TerminalTheme.red),
-                label: const Text(
-                  'VOLVER A LA PECERA',
-                  style: TextStyle(color: TerminalTheme.red),
+      bottomNavigationBar: Consumer<AudioProvider>(
+        builder: (context, audio, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (audio.currentTrack != null) const GlobalAudioBar(),
+            if (_showAdmin)
+              BottomAppBar(
+                color: Colors.black,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _showAdmin = false),
+                  icon: const Icon(Icons.arrow_back, color: TerminalTheme.red),
+                  label: const Text(
+                    'VOLVER A LA PECERA',
+                    style: TextStyle(color: TerminalTheme.red),
+                  ),
                 ),
+              )
+            else
+              BottomNavigationBar(
+                currentIndex: _selectedIndex,
+                onTap: (index) => setState(() => _selectedIndex = index),
+                selectedFontSize: 9,
+                unselectedFontSize: 8,
+                iconSize: 18,
+                items: const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.home_outlined),
+                    label: 'INICIO',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.shopping_bag_outlined),
+                    label: 'MERCH',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.library_music_outlined),
+                    label: 'ARCHIVO',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.play_circle_outline),
+                    label: 'STREAM',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.mail_outline),
+                    label: 'CONTACTO',
+                  ),
+                ],
               ),
-            )
-          : BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (index) => setState(() => _selectedIndex = index),
-              selectedFontSize: 9,
-              unselectedFontSize: 8,
-              iconSize: 18,
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.home_outlined),
-                  label: 'INICIO',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.shopping_bag_outlined),
-                  label: 'MERCH',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.library_music_outlined),
-                  label: 'ARCHIVO',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.play_circle_outline),
-                  label: 'STREAM',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.mail_outline),
-                  label: 'CONTACTO',
-                ),
-              ],
-            ),
+          ],
+        ),
+      ),
     );
   }
 }

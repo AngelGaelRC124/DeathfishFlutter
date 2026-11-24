@@ -315,7 +315,9 @@ class _MerchCard extends StatelessWidget {
         children: [
           Expanded(
             flex: 5,
-            child: product.imageMediaId == null
+            child: product.imageUrl != null
+                ? _networkImage(product.imageUrl!)
+                : product.imageMediaId == null
                 ? _assetImage(product.image)
                 : _StoredMerchImage(
                     dataService: dataService,
@@ -395,6 +397,20 @@ class _MerchCard extends StatelessWidget {
       errorBuilder: (context, error, stackTrace) => _imageError(),
     );
   }
+
+  Widget _networkImage(String url) => Image.network(
+    url,
+    fit: BoxFit.cover,
+    loadingBuilder: (context, child, progress) => progress == null
+        ? child
+        : const ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: CircularProgressIndicator(color: TerminalTheme.red),
+            ),
+          ),
+    errorBuilder: (context, error, stackTrace) => _imageError(),
+  );
 
   Widget _imageError() => const ColoredBox(
     color: Colors.black,

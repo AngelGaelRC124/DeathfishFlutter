@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -15,29 +17,74 @@ abstract interface class AuthGateway {
 
 class AuthService implements AuthGateway {
   AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
-    : _auth = auth ?? FirebaseAuth.instance,
-      _firestore = firestore ?? FirebaseFirestore.instance;
+    : _auth = auth, // ignore: prefer_initializing_formals
+      _firestore = firestore; // ignore: prefer_initializing_formals
 
-  final FirebaseAuth _auth;
-  final FirebaseFirestore _firestore;
+  final FirebaseAuth? _auth;
+  final FirebaseFirestore? _firestore;
+  final StreamController<UserSession?> _localSessionChanges =
+      StreamController<UserSession?>.broadcast(sync: true);
+  UserSession? _localGuestSession;
+
+  FirebaseAuth get _firebaseAuth => _auth ?? FirebaseAuth.instance;
+  FirebaseFirestore get _firestoreDb =>
+      _firestore ?? FirebaseFirestore.instance;
 
   @override
   Stream<UserSession?> get sessionChanges =>
-      _auth.authStateChanges().asyncExpand((user) {
-        if (user == null) return Stream.value(null);
-        if (user.isAnonymous) return Stream.value(_toSession(user, false));
-        return _firestore
-            .collection('users')
-            .doc(user.uid)
-            .snapshots()
-            .map(
-              (profile) => _toSession(user, profile.data()?['rol'] == 'admin'),
-            );
+      Stream<UserSession?>.multi((controller) {
+        StreamSubscription<User?>? authSubscription;
+        StreamSubscription<UserSession?>? localSubscription;
+        StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+        profileSubscription;
+
+        void observeUser(User? user) {
+          unawaited(profileSubscription?.cancel());
+          profileSubscription = null;
+          final localGuest = _localGuestSession;
+          if (localGuest != null) {
+            controller.add(localGuest);
+          } else if (user == null) {
+            controller.add(null);
+          } else if (user.isAnonymous) {
+            controller.add(_toSession(user, false));
+          } else {
+            profileSubscription = _firestoreDb
+                .collection('users')
+                .doc(user.uid)
+                .snapshots()
+                .listen((profile) {
+                  final data = profile.data();
+                  controller.add(
+                    _toSession(
+                      user,
+                      data?['rol'] == 'admin',
+                      name: data?['nombre'] as String?,
+                    ),
+                  );
+                }, onError: controller.addError);
+          }
+        }
+
+        authSubscription = _firebaseAuth.authStateChanges().listen(
+          observeUser,
+          onError: controller.addError,
+        );
+        localSubscription = _localSessionChanges.stream.listen((session) {
+          _localGuestSession = session;
+          observeUser(_firebaseAuth.currentUser);
+        }, onError: controller.addError);
+
+        controller.onCancel = () async {
+          await authSubscription?.cancel();
+          await localSubscription?.cancel();
+          await profileSubscription?.cancel();
+        };
       });
 
   @override
   Future<UserSession> signIn(String email, String password) async {
-    final credential = await _auth.signInWithEmailAndPassword(
+    final credential = await _firebaseAuth.signInWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
@@ -55,7 +102,7 @@ class AuthService implements AuthGateway {
     String email,
     String password,
   ) async {
-    final credential = await _auth.createUserWithEmailAndPassword(
+    final credential = await _firebaseAuth.createUserWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
@@ -63,7 +110,7 @@ class AuthService implements AuthGateway {
     if (user == null) {
       throw StateError('Firebase Authentication no devolvió un usuario.');
     }
-    await _firestore.collection('users').doc(user.uid).set({
+    await _firestoreDb.collection('users').doc(user.uid).set({
       'uid': user.uid,
       'nombre': name.trim(),
       'email': user.email ?? email.trim(),
@@ -75,24 +122,33 @@ class AuthService implements AuthGateway {
 
   @override
   Future<UserSession> signInAsGuest() async {
-    final credential = await _auth.signInAnonymously();
-    final user = credential.user;
-    if (user == null) {
-      throw StateError('Firebase Authentication no devolvió un usuario.');
-    }
-    return _toSession(user, false);
+    const session = UserSession(
+      uid: 'local-guest',
+      email: 'INVITADO',
+      isGuest: true,
+    );
+    _localGuestSession = session;
+    _localSessionChanges.add(session);
+    return session;
   }
 
   @override
   Future<bool> isCurrentUserAdmin() async {
-    final user = _auth.currentUser;
+    final user = _firebaseAuth.currentUser;
     if (user == null || user.isAnonymous) return false;
-    final profile = await _firestore.collection('users').doc(user.uid).get();
+    final profile = await _firestoreDb.collection('users').doc(user.uid).get();
     return profile.data()?['rol'] == 'admin';
   }
 
   @override
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    if (_localGuestSession != null) {
+      _localGuestSession = null;
+      _localSessionChanges.add(null);
+      return;
+    }
+    await _firebaseAuth.signOut();
+  }
 
   Future<UserSession> _sessionFor(User user) async {
     if (user.isAnonymous) return _toSession(user, false);
@@ -101,7 +157,7 @@ class AuthService implements AuthGateway {
   }
 
   Future<void> _ensureFanProfile(User user) async {
-    final reference = _firestore.collection('users').doc(user.uid);
+    final reference = _firestoreDb.collection('users').doc(user.uid);
     final profile = await reference.get();
     if (!profile.exists) {
       await reference.set({
@@ -114,10 +170,12 @@ class AuthService implements AuthGateway {
     }
   }
 
-  UserSession _toSession(User user, bool isAdmin) => UserSession(
-    uid: user.uid,
-    email: user.email ?? 'INVITADO',
-    isGuest: user.isAnonymous,
-    isAdmin: isAdmin,
-  );
+  UserSession _toSession(User user, bool isAdmin, {String? name}) =>
+      UserSession(
+        uid: user.uid,
+        email: user.email ?? 'INVITADO',
+        isGuest: user.isAnonymous,
+        isAdmin: isAdmin,
+        name: name ?? user.displayName,
+      );
 }

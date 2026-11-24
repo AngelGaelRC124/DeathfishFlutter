@@ -18,7 +18,31 @@ service cloud.firestore {
 
     match /feed/{itemId} {
       allow read: if true;
-      allow create, update, delete: if admin();
+      allow create, delete: if admin();
+      allow update: if admin() || updateOwnAttendance();
+
+      function updateOwnAttendance() {
+        let previous = resource.data.get('asistentes', []);
+        let next = request.resource.data.get('asistentes', []);
+        return registeredUser()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['asistentes'])
+          && next is list
+          && (
+            (
+              !previous.hasAny([request.auth.uid])
+              && next.hasAll(previous)
+              && next.size() == previous.size() + 1
+              && next.hasAny([request.auth.uid])
+            )
+            || (
+              previous.hasAny([request.auth.uid])
+              && previous.hasAll(next)
+              && next.size() == previous.size() - 1
+              && !next.hasAny([request.auth.uid])
+            )
+          );
+      }
     }
 
     match /tracks/{trackId} {

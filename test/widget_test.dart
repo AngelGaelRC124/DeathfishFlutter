@@ -34,6 +34,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
 
     expect(find.text('INICIAR SESIÓN'), findsOneWidget);
     expect(firestoreService.seedCount, 0);
@@ -202,6 +204,13 @@ class _FakeFirestoreService implements FirestoreGateway {
 
   @override
   Future<void> deleteFeedItem(String id) async {}
+
+  @override
+  Future<void> setEventAttendance(
+    String eventId,
+    String uid,
+    bool isAttending,
+  ) async {}
 
   @override
   Future<void> saveTrack(Track track) async {}
