@@ -33,7 +33,7 @@ class TerminalPanel extends StatelessWidget {
       padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.85),
-        border: Border.all(color: TerminalTheme.red.withValues(alpha: 0.3), width: 1),
+        border: Border.all(color: const Color(0xFF222222), width: 1),
         borderRadius: BorderRadius.zero,
       ),
       child: child,

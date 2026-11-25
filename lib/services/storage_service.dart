@@ -19,6 +19,7 @@ class StorageService {
       final extension = fileName.split('.').last.toLowerCase();
       const mimeTypes = {
         'mp3': 'audio/mpeg',
+        'm4a': 'audio/mp4',
         'wav': 'audio/wav',
         'mp4': 'video/mp4',
         'jpg': 'image/jpeg',

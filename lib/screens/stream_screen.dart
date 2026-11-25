@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/track.dart';
+import '../models/photo_archive_item.dart';
 import '../models/user_session.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
@@ -153,9 +154,191 @@ class StreamScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
             ],
+            const SizedBox(height: 10),
+            const TerminalPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '> PRÓXIMAMENTE // COMUNIDAD',
+                    style: TextStyle(
+                      color: TerminalTheme.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'MURO // CÓDIGOS DE LA PECERA',
+                    style: TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              '> CARRETE // CONTACT SHEET',
+              style: TextStyle(
+                color: TerminalTheme.red,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 9),
+            _PhotoArchiveSection(
+              gateway: firestoreService is PhaseThreeGateway
+                  ? firestoreService as PhaseThreeGateway
+                  : null,
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+class _PhotoArchiveSection extends StatelessWidget {
+  const _PhotoArchiveSection({required this.gateway});
+
+  final PhaseThreeGateway? gateway;
+
+  @override
+  Widget build(BuildContext context) {
+    final service = gateway;
+    if (service == null) {
+      return const TerminalPanel(
+        child: Text(
+          'CARRETE // SERVICIO FIRESTORE NO DISPONIBLE',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+      );
+    }
+    return StreamBuilder<List<PhotoArchiveItem>>(
+      stream: service.watchPhotoArchive(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return TerminalPanel(
+            child: Text(
+              'ERROR AL REVELAR FOTOGRAFÍAS: ${snapshot.error}',
+              style: const TextStyle(color: TerminalTheme.red, fontSize: 10),
+            ),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const SizedBox(
+            height: 110,
+            child: Center(
+              child: CircularProgressIndicator(color: TerminalTheme.red),
+            ),
+          );
+        }
+        final photos = snapshot.data!;
+        if (photos.isEmpty) {
+          return const TerminalPanel(
+            child: Text(
+              'CARRETE VACÍO // NO HAY NEGATIVOS',
+              style: TextStyle(color: Colors.white54, fontSize: 10),
+            ),
+          );
+        }
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: photos.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 5,
+            mainAxisSpacing: 5,
+          ),
+          itemBuilder: (context, index) {
+            final item = photos[index];
+            return InkWell(
+              onTap: () => _showPhoto(context, item),
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.matrix([
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0.2126, 0.7152, 0.0722, 0, 0,
+                  0, 0, 0, 1, 0,
+                ]),
+                child: Image.network(
+                  item.imageUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Container(
+                    color: const Color(0xFF222222),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white38,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showPhoto(
+    BuildContext context,
+    PhotoArchiveItem item,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  icon: const Icon(Icons.close, color: TerminalTheme.red),
+                ),
+              ),
+              Expanded(
+                child: InteractiveViewer(
+                  child: Image.network(
+                    item.imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Center(
+                      child: Text(
+                        'ERROR AL REVELAR NEGATIVO',
+                        style: TextStyle(color: TerminalTheme.red),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      item.caption,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    if (item.eventDate != null) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        '> ${item.eventDate!.toLocal().toString().split(' ').first}',
+                        style: const TextStyle(
+                          color: TerminalTheme.red,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

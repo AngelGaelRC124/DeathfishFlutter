@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -42,6 +43,7 @@ class GlobalAudioBar extends StatelessWidget {
                   ),
                 ),
               ),
+              _AudioEqualizer(isPlaying: audio.isPlaying),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 tooltip: audio.isPlaying ? 'Pausar' : 'Reproducir',
@@ -111,4 +113,70 @@ class GlobalAudioBar extends StatelessWidget {
       }
     }
   }
+}
+
+class _AudioEqualizer extends StatefulWidget {
+  const _AudioEqualizer({required this.isPlaying});
+
+  final bool isPlaying;
+
+  @override
+  State<_AudioEqualizer> createState() => _AudioEqualizerState();
+}
+
+class _AudioEqualizerState extends State<_AudioEqualizer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 720),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isPlaying) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AudioEqualizer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying == oldWidget.isPlaying) return;
+    if (widget.isPlaying) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _controller,
+    builder: (context, _) => SizedBox(
+      width: 42,
+      height: 24,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List<Widget>.generate(8, (index) {
+          final phase = (_controller.value * 2 * 3.14159) + index * 0.9;
+          final height = widget.isPlaying
+              ? 4.0 + ((math.sin(phase) + 1) * 8)
+              : 3.0;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: 3,
+            height: height,
+            color: TerminalTheme.red,
+          );
+        }),
+      ),
+    ),
+  );
 }

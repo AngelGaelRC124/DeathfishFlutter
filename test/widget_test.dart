@@ -46,7 +46,7 @@ void main() {
     expect(find.text('> COMUNICADOS RECIENTES'), findsOneWidget);
     expect(find.byTooltip('Panel de administrador'), findsNothing);
 
-    await tester.tap(find.text('MERCH'));
+    await tester.tap(find.text('TIENDA'));
     await tester.pumpAndSettle();
     expect(find.text('> MERCH OFICIAL'), findsOneWidget);
     await tester.tap(find.text('AGREGAR').first);
@@ -58,8 +58,9 @@ void main() {
     await tester.tap(find.byIcon(Icons.close).last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('ARCHIVO'));
+    await tester.tap(find.text('SONIDO'));
     await tester.pumpAndSettle();
+    expect(find.text('[ TRACKS ]'), findsOneWidget);
     expect(find.text('wow&flutter'), findsOneWidget);
     await tester.tap(find.text('wow&flutter'));
     await tester.pumpAndSettle();
@@ -72,13 +73,17 @@ void main() {
     await tester.tap(find.byIcon(Icons.close).last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('STREAM'));
+    await tester.tap(find.text('COMUNIDAD'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('[ ARCHIVO // STREAM + CLIPS ]'));
     await tester.pumpAndSettle();
     expect(find.text('> STREAM / TRANSMISIONES'), findsOneWidget);
-    await tester.tap(find.text('CONTACTO'));
+    await tester.tap(find.byTooltip('Contacto'));
     await tester.pumpAndSettle();
     expect(find.text('NOMBRE / ORGANIZACIÓN'), findsOneWidget);
 
+    await tester.tap(find.text('VOLVER A INICIO'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Cerrar sesión'));
     await tester.pumpAndSettle();
     expect(find.text('INICIAR SESIÓN'), findsOneWidget);

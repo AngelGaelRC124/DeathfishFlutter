@@ -4,9 +4,12 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/track.dart';
+import '../services/deathfish_audio_handler.dart';
 
 class AudioProvider extends ChangeNotifier {
-  AudioProvider({AudioPlayer? player}) : _player = player ?? AudioPlayer() {
+  AudioProvider({AudioPlayer? player, DeathfishAudioHandler? handler})
+    : _player = player ?? handler?.player ?? AudioPlayer(),
+      _handler = handler {
     _stateSubscription = _player.onPlayerStateChanged.listen((state) {
       _playerState = state;
       notifyListeners();
@@ -27,6 +30,7 @@ class AudioProvider extends ChangeNotifier {
   }
 
   final AudioPlayer _player;
+  final DeathfishAudioHandler? _handler;
   StreamSubscription<PlayerState>? _stateSubscription;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
@@ -34,6 +38,7 @@ class AudioProvider extends ChangeNotifier {
 
   Track? _currentTrack;
   Source? _currentSource;
+  String? _currentSourceKey;
   PlayerState _playerState = PlayerState.stopped;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
@@ -48,22 +53,30 @@ class AudioProvider extends ChangeNotifier {
   Future<void> playTrack(
     Track track, {
     required Future<Uint8List?> Function(String mediaId) readLocalMedia,
+    String? sourceUrl,
+    String? localFilePath,
   }) async {
     _isLoading = true;
     notifyListeners();
     try {
-      if (_currentTrack?.id != track.id) {
+      final sourceKey = localFilePath ?? sourceUrl ?? track.audioUrl;
+      if (_currentTrack?.id != track.id || _currentSourceKey != sourceKey) {
         await _player.stop();
         _currentTrack = track;
         _currentSource = null;
+        _currentSourceKey = sourceKey;
         _position = Duration.zero;
         _duration = Duration.zero;
+        await _handler?.setTrack(track);
       }
 
-      final audioUrl = track.audioUrl;
-      if (audioUrl != null && audioUrl.isNotEmpty) {
+      if (localFilePath != null) {
+        _currentSource = DeviceFileSource(localFilePath);
+      }
+      final audioUrl = sourceUrl ?? track.audioUrl;
+      if (_currentSource == null && audioUrl != null && audioUrl.isNotEmpty) {
         _currentSource = UrlSource(audioUrl);
-      } else {
+      } else if (_currentSource == null) {
         final mediaId = track.audioMediaId;
         if (mediaId == null) {
           throw StateError('Esta canción no tiene audio adjunto.');
@@ -84,15 +97,50 @@ class AudioProvider extends ChangeNotifier {
   Future<void> toggleTrack(
     Track track, {
     required Future<Uint8List?> Function(String mediaId) readLocalMedia,
+    String? sourceUrl,
+    String? localFilePath,
   }) async {
-    if (_currentTrack?.id == track.id && isPlaying) {
+    final sourceKey = localFilePath ?? sourceUrl ?? track.audioUrl;
+    if (_currentTrack?.id == track.id &&
+        _currentSourceKey == sourceKey &&
+        isPlaying) {
       await _player.pause();
     } else if (_currentTrack?.id == track.id &&
+        _currentSourceKey == sourceKey &&
         _playerState == PlayerState.paused) {
       await _player.resume();
     } else {
-      await playTrack(track, readLocalMedia: readLocalMedia);
+      await playTrack(
+        track,
+        readLocalMedia: readLocalMedia,
+        sourceUrl: sourceUrl,
+        localFilePath: localFilePath,
+      );
     }
+  }
+
+  Future<void> playStream({
+    required String title,
+    required String url,
+  }) async {
+    if (url.trim().isEmpty) {
+      throw ArgumentError.value(url, 'url', 'La transmisión no tiene URL.');
+    }
+    final track = Track(
+      id: 'radio_live',
+      number: 'FM',
+      title: title,
+      album: 'RADIO LA PECERA',
+      duration: 'EN VIVO',
+      lyrics: '',
+      youtubeUrl: '',
+      audioUrl: url,
+    );
+    await playTrack(
+      track,
+      readLocalMedia: (_) async => null,
+      sourceUrl: url,
+    );
   }
 
   Future<void> togglePlayback() async {
@@ -114,8 +162,10 @@ class AudioProvider extends ChangeNotifier {
 
   Future<void> close() async {
     await _player.stop();
+    await _handler?.clearTrack();
     _currentTrack = null;
     _currentSource = null;
+    _currentSourceKey = null;
     _playerState = PlayerState.stopped;
     _position = Duration.zero;
     _duration = Duration.zero;
@@ -129,6 +179,7 @@ class AudioProvider extends ChangeNotifier {
     unawaited(_durationSubscription?.cancel());
     unawaited(_completeSubscription?.cancel());
     unawaited(_player.dispose());
+    unawaited(_handler?.dispose());
     super.dispose();
   }
 }

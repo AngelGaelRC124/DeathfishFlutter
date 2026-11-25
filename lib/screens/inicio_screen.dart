@@ -1,15 +1,163 @@
 import 'package:flutter/material.dart';
 
+import '../models/ep_progress.dart';
 import '../models/feed_item.dart';
 import '../models/user_session.dart';
 import '../services/data_service.dart';
 import '../services/firestore_service.dart';
 import '../theme/terminal_theme.dart';
 import '../widgets/terminal_widgets.dart';
+import 'scene_directory_screen.dart';
 
-class InicioScreen extends StatelessWidget {
+class InicioScreen extends StatefulWidget {
   const InicioScreen({
     super.key,
+    required this.dataService,
+    required this.firestoreService,
+    required this.session,
+  });
+
+  final DataService dataService;
+  final FirestoreGateway firestoreService;
+  final UserSession session;
+
+  @override
+  State<InicioScreen> createState() => _InicioScreenState();
+}
+
+class _InicioScreenState extends State<InicioScreen> {
+  int _selectedTab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final gateway = widget.firestoreService is PhaseThreeGateway
+        ? widget.firestoreService as PhaseThreeGateway
+        : null;
+    return Column(
+      children: [
+        _EpProgressRibbon(gateway: gateway),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 7),
+          child: Row(
+            children: [
+              Expanded(
+                child: _HomeTab(
+                  label: '[ FEED / EVENTOS ]',
+                  selected: _selectedTab == 0,
+                  onTap: () => setState(() => _selectedTab = 0),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: _HomeTab(
+                  label: '[ ESCENA // RED ]',
+                  selected: _selectedTab == 1,
+                  onTap: () => setState(() => _selectedTab = 1),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: _selectedTab,
+            children: [
+              _FeedEventsScreen(
+                dataService: widget.dataService,
+                firestoreService: widget.firestoreService,
+                session: widget.session,
+              ),
+              SceneDirectoryScreen(gateway: gateway),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EpProgressRibbon extends StatelessWidget {
+  const _EpProgressRibbon({required this.gateway});
+
+  final PhaseThreeGateway? gateway;
+
+  @override
+  Widget build(BuildContext context) {
+    final service = gateway;
+    if (service == null) return const SizedBox.shrink();
+    return StreamBuilder<EpProgress>(
+      stream: service.watchEpProgress(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: Colors.black,
+            child: Text(
+              'EP_PROGRESS // ERROR: ${snapshot.error}',
+              style: const TextStyle(color: TerminalTheme.red, fontSize: 9),
+            ),
+          );
+        }
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        final progress = snapshot.data!;
+        if (progress.projectName.isEmpty && progress.stage.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final completed = (progress.percentage / 10).round().clamp(0, 10);
+        final bar =
+            '${'█' * completed}${'░' * (10 - completed)} ${progress.percentage}%';
+        return Container(
+          width: double.infinity,
+          color: Colors.black,
+          padding: const EdgeInsets.fromLTRB(12, 7, 12, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${progress.projectName} // ${progress.stage}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: TerminalTheme.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    bar,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+              if (progress.statusNote.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(
+                    '> ${progress.statusNote}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white60, fontSize: 9),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FeedEventsScreen extends StatelessWidget {
+  const _FeedEventsScreen({
     required this.dataService,
     required this.firestoreService,
     required this.session,
@@ -201,6 +349,32 @@ class InicioScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+class _HomeTab extends StatelessWidget {
+  const _HomeTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton(
+    onPressed: onTap,
+    style: OutlinedButton.styleFrom(
+      foregroundColor: selected ? Colors.black : TerminalTheme.red,
+      backgroundColor: selected ? TerminalTheme.red : Colors.black,
+      side: const BorderSide(color: TerminalTheme.red),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 9),
+    ),
+    child: Text(label, textAlign: TextAlign.center),
+  );
 }
 
 class _AttendanceButton extends StatelessWidget {

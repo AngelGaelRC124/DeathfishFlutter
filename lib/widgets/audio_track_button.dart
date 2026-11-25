@@ -13,11 +13,13 @@ class AudioTrackButton extends StatelessWidget {
     required this.track,
     required this.dataService,
     required this.session,
+    this.sourceUrl,
   });
 
   final Track track;
   final DataService dataService;
   final UserSession session;
+  final String? sourceUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +53,7 @@ class AudioTrackButton extends StatelessWidget {
                 await audio.toggleTrack(
                   track,
                   readLocalMedia: dataService.readMedia,
+                  sourceUrl: sourceUrl,
                 );
               } catch (error) {
                 if (context.mounted) {
